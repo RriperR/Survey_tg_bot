@@ -1,0 +1,31 @@
+version: '3.8'
+services:
+  bot:
+    build: .
+    container_name: telegram_bot
+    environment:
+      - BOT_TOKEN = помеятиь
+      - DB_HOST=mysql
+      - DB_USER=riper
+      - DB_PASSWORD=pswd #поменять
+      - DB_NAME=test
+    depends_on:
+      - mysql
+    restart: always
+
+  mysql:
+    image: mysql:5.7
+    container_name: mysql_db
+    environment:
+      MYSQL_ROOT_PASSWORD: ${DB_PASSWORD}
+      MYSQL_DATABASE: ${DB_NAME}
+      MYSQL_USER: ${DB_USER}
+      MYSQL_PASSWORD: ${DB_PASSWORD}
+    ports:
+      - "3306:3306"
+    volumes:
+      - mysql_data:/var/lib/mysql
+      - ./database_dump.sql:/docker-entrypoint-initdb.d/dump.sql
+
+volumes:
+  mysql_data:

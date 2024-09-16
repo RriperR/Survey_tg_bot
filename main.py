@@ -1,4 +1,3 @@
-import csv
 import telebot
 import pandas as pd
 from telebot import types
@@ -48,17 +47,20 @@ def log_user(message):
             cursorclass=pymysql.cursors.DictCursor
         )
 
-
         with connection.cursor() as cursor:
-            cursor.execute("SELECT * FROM users WHERE chatid = %s", (message.chat.id,))
+            cursor.execute("SELECT * FROM respondents WHERE fullname = %s", (user_info['fullname'],))
             result = cursor.fetchone()
 
             if result:
                 return
-
-            sql = "INSERT INTO users (fullname, phone_number, tg_username, photo, chat_id) VALUES (%s, %s, %s, %s, %s)"
-            cursor.execute(sql, (user_info['fullname'], user_info['phone'], user_info['username'], user_info['photo'], message.chat.id))
-            connection.commit()
+            try:
+                sql = "INSERT INTO respondents (fullname) VALUES (%s)"
+                cursor.execute(sql, user_info['fullname'])
+                connection.commit()
+                bot.send_message(message.chat.id, 'Данные успешно добавлены!')
+            except Exception as ex:
+                bot.send_message(message.chat.id, "Что-то пошло не так")
+                bot.send_message('-4573230290', f"Error while logging action: {ex}")
 
     except Exception as ex:
         bot.send_message('-4573230290', f"Error while logging action: {ex}")
@@ -73,8 +75,13 @@ def registration(message):
 
 def fullname_input(message):
     user_info['fullname'] = message.text
+    log_user(message)
 
 
 @bot.message_handler(commands=['start'])
 def start(message):
+    bot.send_message(message.chat.id, 'Бот для проведения опросов')
     registration(message)
+
+
+bot.polling(non_stop=True)
