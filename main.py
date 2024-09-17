@@ -13,7 +13,7 @@ user_info = {'fullname':'', 'phone' : '', 'username' : '', 'photo' : ''}
 
 # try:
 #     connection = pymysql.connect(
-#                 host=host,
+#                 host=h ost,
 #                 port=3306,
 #                 user=user,
 #                 password=password,
@@ -60,10 +60,10 @@ def log_user(message):
                 bot.send_message(message.chat.id, 'Данные успешно добавлены!')
             except Exception as ex:
                 bot.send_message(message.chat.id, "Что-то пошло не так")
-                bot.send_message('-4573230290', f"Error while logging action: {ex}")
+                bot.send_message(message.chat.id, f"Error while logging action: {ex}")
 
     except Exception as ex:
-        bot.send_message('-4573230290', f"Error while logging action: {ex}")
+        bot.send_message(message.chat.id, f"Error while logging action: {ex}")
 
     finally:
         connection.close()

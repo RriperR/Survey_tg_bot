@@ -1,5 +1,5 @@
 # Используем официальный образ Python
-FROM python:3.9-slim
+FROM python
 
 # Установим необходимые системные зависимости
 RUN apt-get update && apt-get install -y \
