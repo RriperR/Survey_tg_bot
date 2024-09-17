@@ -11,6 +11,8 @@ bot = telebot.TeleBot(bot_token)
 
 user_info = {'fullname':'', 'phone' : '', 'username' : '', 'photo' : ''}
 
+
+
 # try:
 #     connection = pymysql.connect(
 #                 host=h ost,
