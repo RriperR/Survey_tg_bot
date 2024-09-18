@@ -19,6 +19,9 @@ worksheet = spreadsheet.sheet1
 # Замените YOUR_TELEGRAM_BOT_TOKEN на ваш токен
 bot = telebot.TeleBot("7402075843:AAGrh9drV5TvHCR0T9qeFR932MHAbgbSyg0")
 
+# Глобальная переменная для хранения выбранного имени
+user_data = {}
+
 @bot.message_handler(commands=['start'])
 def start(message):
     # Получаем список ФИО из первого столбца
@@ -36,11 +39,31 @@ def handle_name_selection(message):
     chat_id = message.chat.id
     selected_name = message.text
 
-    # Добавляем id чата в другой столбец
-    cell = worksheet.find(selected_name)
-    worksheet.update_cell(cell.row, cell.col + 2, chat_id)  # Записываем в соседний столбец
+    # Сохраняем выбранное имя в глобальной переменной для пользователя
+    user_data[chat_id] = selected_name
 
-    bot.send_message(message.chat.id, f"Вы выбрали: {selected_name}.\nChat ID {chat_id} добавлен в таблицу.")
+    # Создаем клавиатуру для подтверждения выбора
+    markup = types.InlineKeyboardMarkup()
+    markup.add(types.InlineKeyboardButton(text="Да", callback_data="confirm_yes"))
+    markup.add(types.InlineKeyboardButton(text="Нет", callback_data="confirm_no"))
+
+    bot.send_message(chat_id, f"Вы выбрали {selected_name}. Всё верно?", reply_markup=markup)
+
+# Обработка нажатия на кнопку подтверждения
+@bot.callback_query_handler(func=lambda call: True)
+def handle_confirmation(call):
+    chat_id = call.message.chat.id
+    if call.data == "confirm_yes":
+        # Если пользователь подтвердил выбор, добавляем chat_id в таблицу
+        selected_name = user_data.get(chat_id)
+        cell = worksheet.find(selected_name)
+        worksheet.update_cell(cell.row, cell.col + 2, chat_id)  # Записываем в соседний столбец
+
+        bot.send_message(chat_id, f"Вы успешно зарегистрировались как {selected_name}.")
+    elif call.data == "confirm_no":
+        # Если пользователь отменил выбор, предлагаем выбрать снова
+        bot.send_message(chat_id, "Пожалуйста, выберите ФИО снова с помощью меню /start")
+        del user_data[chat_id]  # Очищаем сохраненное имя для пользователя
 
 if __name__ == '__main__':
     bot.polling(none_stop=True)
