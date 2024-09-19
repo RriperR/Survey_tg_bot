@@ -56,16 +56,63 @@ def handle_name_selection(message):
 def handle_confirmation(call):
     chat_id = call.message.chat.id
     if call.data == "confirm_yes":
-        # Если пользователь подтвердил выбор, добавляем chat_id в таблицу
-        selected_name = user_data.get(chat_id)
-        cell = worksheet.find(selected_name)
-        worksheet.update_cell(cell.row, cell.col + 2, chat_id)  # Записываем в соседний столбец
+        # Если пользователь подтвердил выбор, проверяем, зарегистрирован ли уже этот chat_id
+        chat_ids = worksheet.col_values(3)[1:]  # Предполагаем, что chat_id находится в 3 столбце, пропускаем заголовок
 
-        bot.send_message(chat_id, f"Вы успешно зарегистрировались как {selected_name}.")
+        # Проверка, есть ли chat_id в столбце
+        if str(chat_id) in chat_ids:
+            # Если chat_id найден, ищем соответствующее имя (в этом же ряду)
+            row_index = chat_ids.index(str(chat_id)) + 2  # +2 потому что индекс с 0 и пропускаем заголовок
+            registered_name = worksheet.cell(row_index, 1).value  # Предполагаем, что ФИО находится в 1 столбце
+
+            bot.send_message(chat_id, f"Вы уже зарегистрировались как {registered_name}.")
+        else:
+            # Если chat_id не найден, добавляем его в таблицу
+            selected_name = user_data.get(chat_id).strip()  # Убираем лишние пробелы
+
+            # Получаем все имена из первого столбца
+            names_in_sheet = worksheet.col_values(1)[1:]  # Пропускаем заголовок
+
+            # Ищем строку с именем, игнорируя пробелы
+            found_row = None
+            for index, name in enumerate(names_in_sheet):
+                if name.strip() == selected_name:  # Сравниваем имена без пробелов
+                    found_row = index + 2  # +2, потому что пропускаем заголовок
+
+            if found_row:
+                worksheet.update_cell(found_row, 3, chat_id)  # Записываем chat_id в 3 столбец
+                bot.send_message(chat_id, f"Вы успешно зарегистрировались как {selected_name}.")
+            else:
+                bot.send_message(chat_id, "Произошла ошибка: не удалось найти ваше имя в таблице.")
     elif call.data == "confirm_no":
         # Если пользователь отменил выбор, предлагаем выбрать снова
         bot.send_message(chat_id, "Пожалуйста, выберите ФИО снова с помощью меню /start")
         del user_data[chat_id]  # Очищаем сохраненное имя для пользователя
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 if __name__ == '__main__':
     bot.polling(none_stop=True)
