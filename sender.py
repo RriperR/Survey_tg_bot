@@ -1,9 +1,7 @@
 import telebot
-import pandas as pd
 from telebot import types
 import pymysql
 import datetime
-import os
 import gspread
 from oauth2client.service_account import ServiceAccountCredentials
 
@@ -38,16 +36,11 @@ for index, name in enumerate(names, start=2):  # Нумерация начина
 
 # Создание обратного словаря
 reverse_stuff = {v: k for k, v in stuff.items()}
-# Выводим словарь для проверки
-print(stuff)
-print(reverse_stuff)
 
 
 # Создаем словарь
 fio_chatid_dict = {name: chat_id for name, chat_id in zip(names, chat_ids) if chat_id}
 
-# Выводим словарь
-print(fio_chatid_dict)
 
 # Открываем второй лист
 worksheet2 = spreadsheet.get_worksheet(1)  # Открываем второй лист
@@ -57,6 +50,8 @@ rows = worksheet2.get_all_values()[1:]  # Пропускаем заголово�
 
 
 def send_q(chat_id, questionary, obj):
+    user_data[chat_id] = [obj, questionary]
+
     stuff_id = stuff[obj]
 
     # Открываем 3 лист
@@ -89,25 +84,44 @@ def send_q(chat_id, questionary, obj):
                     bot.register_next_step_handler(mesg, str_saver)
 
 def str_saver(message):
-    pass
+    try:
+        user_data[str(message.chat.id)].append(message.text)
+        user_data[str(message.chat.id)].insert(2, str(datetime.datetime.now()))
+
+        # Открываем 4 лист
+        worksheet4 = spreadsheet.get_worksheet(3)
+
+        worksheet4.append_row(user_data[str(message.chat.id)])
+
+        bot.send_message(message.chat.id, "Спасибо за обратную связь!")
+
+    except Exception as e:
+        bot.send_message(message.chat.id,f"Ошибка при попытке записи ответов: {e}")
+
+
 
 # Обработчик колбэков для оценок
 @bot.callback_query_handler(func=lambda call: call.data.startswith("rate_"))
 def handle_rating_callback(call):
     try:
+        print(f"Получено callback_data: {call.data}")  # Для отладки
         # Разбиваем callback_data чтобы получить оценку, obj, speciality и сам вопрос
         _, rating, obj_id, speciality, i = call.data.split("_")
-        obj = reverse_stuff[obj_id]
+        print(f"rating: {rating}, obj_id: {obj_id}, speciality: {speciality}, i: {i}")  # Для отладки
 
+        obj = reverse_stuff[int(obj_id)]  # Преобразование ID объекта в int
 
-        #user_data[call.message.chat.id] =
+        i = int(i)  # Преобразование индекса вопроса в int
+
+        chat_id_str = str(call.message.chat.id)
+
+        user_data[chat_id_str].append(questions[i])
+        user_data[chat_id_str].append(rating)
+        #print(user_data)
+        #bot.send_message(call.message.chat.id, f"{questions[i]}\n\nОценка: {rating}")
 
     except Exception as e:
         print(f"Ошибка при обработке рейтинга: {e}")
-
-
-
-
 
 
 
@@ -137,3 +151,6 @@ for row in rows:
     else:
         print(f"Чат ID для {fio} не найден")
 
+
+
+bot.polling(none_stop=True)
