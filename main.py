@@ -24,6 +24,8 @@ user_data = {}
 
 @bot.message_handler(commands=['start'])
 def start(message):
+    bot.send_message(message.chat.id, "Загрузка данных...")
+
     # Получаем список ФИО из первого столбца
     names = worksheet.col_values(1)[1:]  # Пропускаем заголовок
 
