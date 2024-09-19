@@ -50,22 +50,15 @@ def send_q(questionary, chat_id):
                     # Создаем клавиатуру для оценки
                     markup = types.InlineKeyboardMarkup()
                     markup.row(
-                        types.InlineKeyboardButton(text="1", callback_data="1"),
-                        types.InlineKeyboardButton(text="2", callback_data="2"),
-                        types.InlineKeyboardButton(text="3", callback_data="3"),
-                        types.InlineKeyboardButton(text="4", callback_data="4"),
-                        types.InlineKeyboardButton(text="5", callback_data="5")
+                        types.InlineKeyboardButton(text="1", callback_data=f"rate_1_{obj}_{speciality}"),
+                        types.InlineKeyboardButton(text="2", callback_data=f"rate_2_{obj}_{speciality}"),
+                        types.InlineKeyboardButton(text="3", callback_data=f"rate_3_{obj}_{speciality}"),
+                        types.InlineKeyboardButton(text="4", callback_data=f"rate_4_{obj}_{speciality}"),
+                        types.InlineKeyboardButton(text="5", callback_data=f"rate_5_{obj}_{speciality}")
                     )
 
                     bot.send_message(chat_id, row[i], reply_markup=markup)
 
-                if row[i + 1] == 'y/n':
-                    # Создаем клавиатуру для оценки
-                    markup = types.InlineKeyboardMarkup()
-                    markup.add(types.InlineKeyboardButton(text="Да", callback_data="Y"))
-                    markup.add(types.InlineKeyboardButton(text="Нет", callback_data="N"))
-
-                    bot.send_message(chat_id, row[i], reply_markup=markup)
 
                 if row[i + 1] == 'str':
                     mesg = bot.send_message(chat_id, row[i])
@@ -75,13 +68,32 @@ def send_q(questionary, chat_id):
 def str_saver(message):
     pass
 
+# Обработчик колбэков для оценок
+@bot.callback_query_handler(func=lambda call: call.data.startswith("rate_"))
+def handle_rating_callback(call):
+    try:
+        # Разбиваем callback_data чтобы получить оценку, obj и speciality
+        _, rating, obj, speciality = call.data.split("_")
 
+        # Получаем текущую дату и время в московском часовом поясе
+        tz_moscow = pytz.timezone('Europe/Moscow')
+        current_time = datetime.datetime.now(tz_moscow).strftime("%Y-%m-%d %H:%M:%S")
+
+        # Записываем данные в 4-й лист
+        worksheet4.append_row([obj, speciality, current_time, rating])
+
+        # Уведомляем пользователя
+        bot.send_message(call.message.chat.id, f"Спасибо за вашу оценку: {rating}!")
+        print(f"Оценка {rating} для {obj} ({speciality}) записана")
+
+    except Exception as e:
+        print(f"Ошибка при обработке рейтинга: {e}")
 
 # Проходим по каждой строке
 for row in rows:
     fio = row[0].strip()  # Берем ФИО из первого столбца
-    text_part1 = row[1]   # Текст из второго столбца
-    text_part2 = row[2]   # Текст из третьего столбца
+    obj = row[1]   # Текст из второго столбца
+    speciality = row[2]   # Текст из третьего столбца
 
     # Проверяем, есть ли chat_id для данного ФИО в словаре
     chat_id = fio_chatid_dict.get(fio)
@@ -89,9 +101,9 @@ for row in rows:
     if chat_id:
         try:
             # Отправляем сообщение
-            message = f"На этой неделе с вами работал(-а): {text_part1}. Пожалуйста, пройдите опрос: {text_part2}"
+            message = f"На этой неделе с вами работал(-а): {obj}. Пожалуйста, пройдите опрос: {speciality}"
             bot.send_message(chat_id, message)
-            send_q(text_part2, chat_id)
+            send_q(speciality, chat_id)
 
             print(f"Сообщение отправлено пользователю {fio} (chat_id: {chat_id})")
         except Exception as e:
