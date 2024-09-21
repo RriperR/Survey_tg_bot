@@ -1,14 +1,11 @@
 import telebot
-import pandas as pd
 from telebot import types
-import pymysql
-import datetime
-import os
 import gspread
 from oauth2client.service_account import ServiceAccountCredentials
 import schedule
 import time
 import subprocess
+import datetime
 
 # Настройка авторизации Google Sheets API
 scope = ["https://spreadsheets.google.com/feeds", "https://www.googleapis.com/auth/drive"]
@@ -104,7 +101,7 @@ def run_sender():
         print(f"Ошибка при запуске рассылки: {e}")
 
 # Планируем задачу на каждое воскресенье
-schedule.every().friday.at("19:03").do(run_sender)
+schedule.every().saturday.at("20:25").do(run_sender)
 
 # Асинхронный запуск планировщика
 def scheduler():
