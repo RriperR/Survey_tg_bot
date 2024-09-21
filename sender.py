@@ -17,6 +17,28 @@ worksheet = spreadsheet.sheet1
 # Замените YOUR_TELEGRAM_BOT_TOKEN на ваш токен
 bot = telebot.TeleBot("7402075843:AAGrh9drV5TvHCR0T9qeFR932MHAbgbSyg0")
 
+# def log_action(name, action):
+#     try:
+#         connection = pymysql.connect(
+#             host="",
+#             port=3306,
+#             user='riper',
+#             password='',
+#             database='',
+#             cursorclass=pymysql.cursors.DictCursor
+#         )
+#
+#
+#         with connection.cursor() as cursor:
+#             sql = "INSERT INTO actions (name, action, date_time) VALUES (%s, %s, %s)"
+#             cursor.execute(sql, (name, action, str(datetime.datetime.now())))
+#             connection.commit()
+#
+#     except Exception as ex:
+#         bot.send_message('-4573230290', f"Error while logging action: {ex}")
+#
+#     finally:
+#         connection.close()
 
 stuff = {}
 user_data = {}
@@ -49,10 +71,11 @@ worksheet2 = spreadsheet.get_worksheet(1)  # Открываем второй л�
 rows = worksheet2.get_all_values()[1:]  # Пропускаем заголовок
 
 
-def send_q(chat_id, questionary, obj):
-    user_data[chat_id] = [obj, questionary]
+def send_q(chat_id, questionary, obj, subj):
+    user_data[chat_id] = [subj, obj, questionary]
 
-    stuff_id = stuff[obj]
+    #obj_id = stuff[obj]
+    #subj_id = stuff[subj]
 
     # Открываем 3 лист
     worksheet3 = spreadsheet.get_worksheet(2)
@@ -70,11 +93,11 @@ def send_q(chat_id, questionary, obj):
                     # Создаем клавиатуру для оценки
                     markup = types.InlineKeyboardMarkup()
                     markup.row(
-                        types.InlineKeyboardButton(text="1", callback_data=f"rate_1_{stuff_id}_{speciality}_{i}"),
-                        types.InlineKeyboardButton(text="2", callback_data=f"rate_2_{stuff_id}_{speciality}_{i}"),
-                        types.InlineKeyboardButton(text="3", callback_data=f"rate_3_{stuff_id}_{speciality}_{i}"),
-                        types.InlineKeyboardButton(text="4", callback_data=f"rate_4_{stuff_id}_{speciality}_{i}"),
-                        types.InlineKeyboardButton(text="5", callback_data=f"rate_5_{stuff_id}_{speciality}_{i}")
+                        types.InlineKeyboardButton(text="1", callback_data=f"rate_1_{speciality}_{i}"),
+                        types.InlineKeyboardButton(text="2", callback_data=f"rate_2_{speciality}_{i}"),
+                        types.InlineKeyboardButton(text="3", callback_data=f"rate_3_{speciality}_{i}"),
+                        types.InlineKeyboardButton(text="4", callback_data=f"rate_4_{speciality}_{i}"),
+                        types.InlineKeyboardButton(text="5", callback_data=f"rate_5_{speciality}_{i}")
                     )
 
                     bot.send_message(chat_id, row[i], reply_markup=markup)
@@ -86,12 +109,12 @@ def send_q(chat_id, questionary, obj):
 def str_saver(message):
     try:
         user_data[str(message.chat.id)].append(message.text)
-        user_data[str(message.chat.id)].insert(2, str(datetime.datetime.now()))
+        user_data[str(message.chat.id)].insert(3, str(datetime.datetime.now()))
 
         # Открываем 4 лист
         worksheet4 = spreadsheet.get_worksheet(3)
 
-        worksheet4.append_row(user_data[str(message.chat.id)])
+        worksheet4.append_row(user_data[str(message.chat.id)][1::])
 
         bot.send_message(message.chat.id, "Спасибо за обратную связь!")
 
@@ -105,11 +128,9 @@ def str_saver(message):
 def handle_rating_callback(call):
     try:
         print(f"Получено callback_data: {call.data}")  # Для отладки
-        # Разбиваем callback_data чтобы получить оценку, obj, speciality и сам вопрос
-        _, rating, obj_id, speciality, i = call.data.split("_")
-        print(f"rating: {rating}, obj_id: {obj_id}, speciality: {speciality}, i: {i}")  # Для отладки
+        # Разбиваем callback_data
+        _, rating, speciality, i = call.data.split("_")
 
-        obj = reverse_stuff[int(obj_id)]  # Преобразование ID объекта в int
 
         i = int(i)  # Преобразование индекса вопроса в int
 
@@ -131,25 +152,25 @@ def handle_rating_callback(call):
 
 # Проходим по каждой строке
 for row in rows:
-    fio = row[0].strip()  # Берем ФИО из первого столбца
+    subj = row[0].strip()  # Берем ФИО из первого столбца
     obj = row[1]   # Текст из второго столбца
     speciality = row[2]   # Текст из третьего столбца
 
     # Проверяем, есть ли chat_id для данного ФИО в словаре
-    chat_id = fio_chatid_dict.get(fio)
+    chat_id = fio_chatid_dict.get(subj)
 
     if chat_id:
         try:
             # Отправляем сообщение
             message = f"На этой неделе с вами работал(-а): {obj}. Пожалуйста, пройдите опрос: {speciality}"
             bot.send_message(chat_id, message)
-            send_q(chat_id, speciality, obj)
+            send_q(chat_id, speciality, obj, subj)
 
-            print(f"Сообщение отправлено пользователю {fio} (chat_id: {chat_id})")
+            print(f"Сообщение отправлено пользователю {subj} (chat_id: {chat_id})")
         except Exception as e:
-            print(f"Не удалось отправить сообщение для {fio}. Ошибка: {e}")
+            print(f"Не удалось отправить сообщение для {subj}. Ошибка: {e}")
     else:
-        print(f"Чат ID для {fio} не найден")
+        print(f"Чат ID для {subj} не найден")
 
 
 

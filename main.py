@@ -6,6 +6,9 @@ import datetime
 import os
 import gspread
 from oauth2client.service_account import ServiceAccountCredentials
+import schedule
+import time
+import subprocess
 
 # Настройка авторизации Google Sheets API
 scope = ["https://spreadsheets.google.com/feeds", "https://www.googleapis.com/auth/drive"]
@@ -20,7 +23,8 @@ worksheet = spreadsheet.sheet1
 bot = telebot.TeleBot("7402075843:AAGrh9drV5TvHCR0T9qeFR932MHAbgbSyg0")
 
 # Глобальная переменная для хранения выбранного имени
-user_data = {}
+user_names = {}
+
 
 @bot.message_handler(commands=['start'])
 def start(message):
@@ -42,7 +46,7 @@ def handle_name_selection(message):
     selected_name = message.text
 
     # Сохраняем выбранное имя в глобальной переменной для пользователя
-    user_data[chat_id] = selected_name
+    user_names[chat_id] = selected_name
 
     # Создаем клавиатуру для подтверждения выбора
     markup = types.InlineKeyboardMarkup()
@@ -68,7 +72,7 @@ def handle_confirmation(call):
             bot.send_message(chat_id, f"Вы уже зарегистрировались как {registered_name}.")
         else:
             # Если chat_id не найден, добавляем его в таблицу
-            selected_name = user_data.get(chat_id).strip()  # Убираем лишние пробелы
+            selected_name = user_names.get(chat_id).strip()  # Убираем лишние пробелы
 
             # Получаем все имена из первого столбца
             names_in_sheet = worksheet.col_values(1)[1:]  # Пропускаем заголовок
@@ -87,35 +91,39 @@ def handle_confirmation(call):
     elif call.data == "confirm_no":
         # Если пользователь отменил выбор, предлагаем выбрать снова
         bot.send_message(chat_id, "Пожалуйста, выберите ФИО снова с помощью меню /start")
-        del user_data[chat_id]  # Очищаем сохраненное имя для пользователя
+        del user_names[chat_id]  # Очищаем сохраненное имя для пользователя
+
+
+# Функция для запуска sender.py
+def run_sender():
+    try:
+        print("Запускаем файл sender.py")
+        subprocess.run(['python', 'sender.py'])
+        print("Рассылка завершена успешно!")
+    except Exception as e:
+        print(f"Ошибка при запуске рассылки: {e}")
+
+# Планируем задачу на каждое воскресенье
+schedule.every().friday.at("19:03").do(run_sender)
+
+# Асинхронный запуск планировщика
+def scheduler():
+    while True:
+        schedule.run_pending()
+        time.sleep(1)
+
+if __name__ == "__main__":
+    # Запускаем планировщик в отдельном потоке
+    import threading
+    scheduler_thread = threading.Thread(target=scheduler)
+    scheduler_thread.start()
+
+# Запуск бота
+bot.polling(none_stop=True)
 
 
 
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-if __name__ == '__main__':
-    bot.polling(none_stop=True)
 
 # from config import host, user, password, db_name, bot_token
 #
