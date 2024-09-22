@@ -228,10 +228,9 @@ def handle_text_response(message):
 
     survey = data['current_survey']
     index = survey['current_question_index']
-    answer = message.text
-    survey['answers'].append((survey['questions'][index][0], answer))
+    survey['answers'].append((survey['questions'][index][0], message.text))
     survey['current_question_index'] += 1
-    send_next_question(chat_id)
+    finalize_questionnaire(chat_id)
 
 # Обработчик оценок
 @bot.callback_query_handler(func=lambda call: call.data.startswith("rate_"))
@@ -272,6 +271,9 @@ def finalize_questionnaire(chat_id):
     worksheet4.append_row(row_data[1::])
 
     bot.send_message(chat_id, "Спасибо за обратную связь!")
+
+    while len(row_data) < 14:
+        row_data.append(None)
 
     try:
         conn = get_db_connection()
@@ -338,7 +340,7 @@ def run_survey_dispatch():
         else:
             print(f"Чат ID для {subj} не найден")
 
-schedule.every().sunday.at("14:42").do(run_survey_dispatch)
+schedule.every().sunday.at("21:03").do(run_survey_dispatch)
 
 # Функция для запуска планировщика
 def scheduler():
