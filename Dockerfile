@@ -1,17 +1,15 @@
 # Используем официальный образ Python
-FROM python
+FROM python:3.9-slim
 
-# Установим необходимые системные зависимости
-RUN apt-get update && apt-get install -y \
-    default-libmysqlclient-dev build-essential
+# Устанавливаем рабочую директорию
+WORKDIR /app
 
-# Устанавливаем зависимости через pip
+# Копируем файл требований и устанавливаем зависимости
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
-# Копируем весь проект в контейнер
-COPY . /app
-WORKDIR /app
+# Копируем исходный код приложения
+COPY . .
 
-# Команда для запуска бота
-CMD ["python", "main.py"]
+# Указываем команду запуска
+CMD ["python", "bot.py"]

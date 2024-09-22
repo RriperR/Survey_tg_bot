@@ -1,6 +1,6 @@
 .venv/
 .idea/
-config.py
 __pycache__/
 docker-compose.yml
 *.sql
+.env

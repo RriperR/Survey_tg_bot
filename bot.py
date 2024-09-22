@@ -6,7 +6,10 @@ import schedule
 import threading
 import time
 import datetime
+import psycopg2
 import subprocess
+import os
+from dotenv import load_dotenv
 
 # Настройка авторизации Google Sheets API
 scope = ["https://spreadsheets.google.com/feeds", "https://www.googleapis.com/auth/drive"]
@@ -19,9 +22,18 @@ client = gspread.authorize(creds)
 spreadsheet = client.open("Сотрудник 2.0 Таблица")
 worksheet = spreadsheet.sheet1
 
+
+
+load_dotenv()
+# Получение переменных окружения
+TELEGRAM_BOT_TOKEN = os.environ.get('BOT_TOKEN')
+DB_HOST = os.environ.get('DB_HOST')
+DB_NAME = os.environ.get('DB_NAME')
+DB_USER = os.environ.get('DB_USER')
+DB_PASSWORD = os.environ.get('DB_PASSWORD')
+
 # Инициализируем бота
-# Замените 'YOUR_TELEGRAM_BOT_TOKEN' на токен вашего бота
-bot = telebot.TeleBot("7402075843:AAGrh9drV5TvHCR0T9qeFR932MHAbgbSyg0")
+bot = telebot.TeleBot(TELEGRAM_BOT_TOKEN)
 
 # Глобальные переменные и словари
 user_names = {}
@@ -40,6 +52,22 @@ fio_chatid_dict = {name.strip(): chat_id for name, chat_id in zip(names, chat_id
 # Создаем словарь ФИО: индекс строки в таблице
 for index, name in enumerate(names, start=2):  # Индексация с 2, так как первая строка - заголовок
     stuff[name.strip()] = index
+
+
+def get_db_connection():
+    conn = psycopg2.connect(
+        host=DB_HOST,
+        database=DB_NAME,
+        user=DB_USER,
+        password=DB_PASSWORD
+    )
+    return conn
+
+# try:
+#     get_db_connection()
+#     print('Success')
+# except Exception as ex:
+#     print(ex)
 
 # Обработчик команды /start для регистрации пользователя
 @bot.message_handler(commands=['start'])
@@ -241,9 +269,24 @@ def finalize_questionnaire(chat_id):
 
     # Открываем 4 лист (результаты)
     worksheet4 = spreadsheet.get_worksheet(3)
-    worksheet4.append_row(row_data)
+    worksheet4.append_row(row_data[1::])
 
     bot.send_message(chat_id, "Спасибо за обратную связь!")
+
+    try:
+        conn = get_db_connection()
+        cursor = conn.cursor()
+
+        cursor.execute("""
+                INSERT INTO survey_responses (respondent, subject, questionnaire, timestamp, question1, answer1, question2, answer2, question3, answer3, question4, answer4, question5, answer5)
+                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+            """, (row_data[0], row_data[1], row_data[2], datetime.datetime.now(), row_data[4], row_data[5], row_data[6], row_data[7], row_data[8], row_data[9], row_data[10], row_data[11], row_data[12], row_data[13]))
+
+        conn.commit()
+        cursor.close()
+        conn.close()
+    except Exception as ex:
+        bot.send_message(chat_id, f"Не удалось сохранить в базу данных: {ex}")
 
     # Очищаем текущий опрос и запускаем следующий, если есть
     data['current_survey'] = None
@@ -295,8 +338,7 @@ def run_survey_dispatch():
         else:
             print(f"Чат ID для {subj} не найден")
 
-# Планируем задачу на каждую пятницу в 19:03
-schedule.every().saturday.at("20:34").do(run_survey_dispatch)
+schedule.every().sunday.at("14:42").do(run_survey_dispatch)
 
 # Функция для запуска планировщика
 def scheduler():
