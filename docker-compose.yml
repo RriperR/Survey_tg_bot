@@ -1,0 +1,26 @@
+version: '3'
+
+services:
+  bot:
+    env_file:
+      - .env
+    image: riper3d/survey_bot
+    container_name: survey_bot
+    depends_on:
+      - db
+    volumes:
+      - ./app/bot.py:/app/bot.py
+    restart: always
+
+  db:
+    env_file:
+      - .env
+    image: postgres:13
+    container_name: survey_db
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+      - ./init.sql:/docker-entrypoint-initdb.d/init.sql
+    restart: always
+
+volumes:
+  pgdata:
