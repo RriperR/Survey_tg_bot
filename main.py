@@ -100,8 +100,7 @@ def run_sender():
     except Exception as e:
         print(f"Ошибка при запуске рассылки: {e}")
 
-# Планируем задачу на каждое воскресенье
-schedule.every().saturday.at("20:25").do(run_sender)
+schedule.every().day.at("19:45").do(run_sender)
 
 # Асинхронный запуск планировщика
 def scheduler():

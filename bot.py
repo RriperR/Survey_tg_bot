@@ -340,7 +340,7 @@ def run_survey_dispatch():
         else:
             print(f"Чат ID для {subj} не найден")
 
-schedule.every().sunday.at("21:03").do(run_survey_dispatch)
+schedule.every().day.at("19:45").do(run_survey_dispatch)
 
 # Функция для запуска планировщика
 def scheduler():

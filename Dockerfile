@@ -1,6 +1,15 @@
 # Используем официальный образ Python
 FROM python:3.9-slim
 
+# Устанавливаем переменную окружения для временной зоны
+ENV TZ=Europe/Moscow
+
+# Устанавливаем tzdata и настраиваем временную зону
+RUN apt-get update && apt-get install -y tzdata && \
+    ln -snf /usr/share/zoneinfo/$TZ /etc/localtime && \
+    echo $TZ > /etc/timezone && \
+    apt-get clean && rm -rf /var/lib/apt/lists/*
+
 # Устанавливаем рабочую директорию
 WORKDIR /app
 
