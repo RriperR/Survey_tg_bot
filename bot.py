@@ -162,9 +162,20 @@ def start_next_survey(chat_id):
         # Загружаем вопросы для этого опроса
         load_questions_for_survey(chat_id)
 
-        # Отправляем сообщение с приглашением пройти опрос
-        message = f"На этой неделе с вами работал(-а): {survey_info['obj']}. Пожалуйста, пройдите опрос: {survey_info['questionary']}"
-        bot.send_message(chat_id, message)
+        # Путь к изображению
+        image_path = f"images/{survey_info['obj']}.png"
+
+        # Проверка, существует ли файл изображения
+        if os.path.exists(image_path):
+            with open(image_path, 'rb') as image_file:
+                # Отправляем фотографию с сообщением
+                message = f"На этой неделе с вами работал(-а): {survey_info['obj']}. Пожалуйста, пройдите опрос: {survey_info['questionary']}"
+                bot.send_photo(chat_id, photo=image_file, caption=message)
+        else:
+            with open("images/unknown.png", 'rb') as image_file:
+                # Отправляем фотографию с сообщением
+                message = f"На этой неделе с вами работал(-а): {survey_info['obj']}. Пожалуйста, пройдите опрос: {survey_info['questionary']}"
+                bot.send_photo(chat_id, photo=image_file, caption=message)
 
         # Начинаем опрос
         send_next_question(chat_id)
@@ -340,10 +351,11 @@ def run_survey_dispatch():
         else:
             print(f"Чат ID для {subj} не найден")
 
-schedule.every().day.at("19:45").do(run_survey_dispatch)
+schedule.every().day.at("19:26").do(run_survey_dispatch)
 
 # Функция для запуска планировщика
 def scheduler():
+    print('run sh')
     while True:
         schedule.run_pending()
         time.sleep(1)

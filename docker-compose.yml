@@ -10,6 +10,7 @@ services:
       - db
     volumes:
       - ./app/bot.py:/app/bot.py
+      - ./app/images:/app/images
     restart: always
 
   db:
