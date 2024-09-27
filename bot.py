@@ -134,7 +134,7 @@ def handle_confirmation(call):
                 # Обновляем словарь fio_chatid_dict
                 fio_chatid_dict[selected_name] = str(chat_id)
             else:
-                bot.send_message(chat_id, "Произошла ошибка: не удалось найти ваше имя в таблице.")
+                bot.send_message(chat_id, "Не удалось найти ваше имя в таблице.")
     elif call.data == "confirm_no":
         # Если пользователь отменил выбор, предлагаем выбрать снова
         bot.send_message(chat_id, "Пожалуйста, выберите ФИО снова с помощью команды /start")
@@ -178,6 +178,7 @@ def start_next_survey(chat_id):
                 bot.send_photo(chat_id, photo=image_file, caption=message)
 
         # Начинаем опрос
+        time.sleep(1)
         send_next_question(chat_id)
     else:
         # Очередь опросов пуста
@@ -223,6 +224,7 @@ def send_next_question(chat_id):
                 types.InlineKeyboardButton(text="5", callback_data="rate_5")
             )
             bot.send_message(chat_id, question, reply_markup=markup)
+            time.sleep(1)
         elif q_type == 'str':
             msg = bot.send_message(chat_id, question)
             bot.register_next_step_handler(msg, handle_text_response)
@@ -351,11 +353,11 @@ def run_survey_dispatch():
         else:
             print(f"Чат ID для {subj} не найден")
 
-schedule.every().day.at("19:26").do(run_survey_dispatch)
+# Запланировать выполнение каждый час
+schedule.every().hour.do(run_survey_dispatch)
 
 # Функция для запуска планировщика
 def scheduler():
-    print('run sh')
     while True:
         schedule.run_pending()
         time.sleep(1)
