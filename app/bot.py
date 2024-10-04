@@ -1,5 +1,5 @@
 import telebot
-from telebot import types
+from telebot import types, apihelper
 import gspread
 from oauth2client.service_account import ServiceAccountCredentials
 import schedule
@@ -34,6 +34,7 @@ DB_PASSWORD = os.environ.get('DB_PASSWORD')
 
 # Инициализируем бота
 bot = telebot.TeleBot(TELEGRAM_BOT_TOKEN)
+apihelper.RETRY_ON_ERROR = True
 
 # Глобальные переменные и словари
 user_names = {}
@@ -105,6 +106,8 @@ def handle_name_selection(message):
 @bot.callback_query_handler(func=lambda call: call.data.startswith("confirm_"))
 def handle_confirmation(call):
     chat_id = call.message.chat.id
+
+
     if call.data == "confirm_yes":
         # Проверяем, зарегистрирован ли уже этот chat_id
         chat_ids = worksheet.col_values(3)[1:]  # chat_id в 3 столбце, пропускаем заголовок
@@ -114,7 +117,7 @@ def handle_confirmation(call):
             row_index = chat_ids.index(str(chat_id)) + 2  # +2 из-за пропуска заголовка и индексации с 0
             registered_name = worksheet.cell(row_index, 1).value  # ФИО в 1 столбце
 
-            bot.send_message(chat_id, f"Вы уже зарегистрировались как {registered_name}.")
+            bot.send_message(chat_id, f"Вы уже зарегистрировались как {registered_name}.", reply_markup=types.ReplyKeyboardRemove())
         else:
             selected_name = user_names.get(chat_id).strip()
 
@@ -129,7 +132,8 @@ def handle_confirmation(call):
 
             if found_row:
                 worksheet.update_cell(found_row, 3, chat_id)  # Записываем chat_id в 3 столбец
-                bot.send_message(chat_id, f"Вы успешно зарегистрировались как {selected_name}.")
+                bot.send_message(chat_id, f"Вы успешно зарегистрировались как {selected_name}.", reply_markup=types.ReplyKeyboardRemove())
+                bot.send_message(chat_id, "Пожалуйста, отправьте ваше фото:")
 
                 # Обновляем словарь fio_chatid_dict
                 fio_chatid_dict[selected_name] = str(chat_id)
@@ -139,6 +143,31 @@ def handle_confirmation(call):
         # Если пользователь отменил выбор, предлагаем выбрать снова
         bot.send_message(chat_id, "Пожалуйста, выберите ФИО снова с помощью команды /start")
         del user_names[chat_id]  # Очищаем сохраненное имя для пользователя
+
+# Обработчик для получения фото и сохранения file_id в 2-й столбец
+@bot.message_handler(content_types=['photo'])
+def handle_photo(message):
+    chat_id = message.chat.id
+
+    # Проверяем, зарегистрирован ли пользователь и подтвердил ли он ФИО
+    if chat_id in user_names and isinstance(user_names[chat_id], dict):
+        # Получаем file_id фото
+        file_id = message.photo[-1].file_id
+
+        # Получаем все chat_id из 3 столбца
+        ids_in_sheet = worksheet.col_values(3)[1:]  # Пропускаем заголовок
+
+        # Ищем строку с именем
+        found_row = None
+        for index, id in enumerate(ids_in_sheet):
+            if str(id) == str(chat_id):
+                found_row = index + 2  # +2 из-за пропуска заголовка
+
+        if found_row:
+            worksheet.update_cell(found_row, 2, file_id)  # Записываем file_id в 2 столбец
+            bot.send_message(chat_id, "Фото успешно сохранено! Регистрация завершена.")
+    else:
+        bot.send_message(chat_id, "Пожалуйста, сначала зарегистрируйтесь с помощью команды /start.")
 
 # Функции для опросов
 def start_next_survey(chat_id):
@@ -162,20 +191,27 @@ def start_next_survey(chat_id):
         # Загружаем вопросы для этого опроса
         load_questions_for_survey(chat_id)
 
-        # Путь к изображению
-        image_path = f"images/{survey_info['obj']}.png"
+        # Получаем строку для `obj` из Google Sheets, чтобы извлечь file_id
+        obj_names = worksheet.col_values(1)[1:]  # Все имена в первом столбце, пропуская заголовок
+        found_row = None
+        for index, name in enumerate(obj_names):
+            if name.strip() == survey_info['obj']:
+                found_row = index + 2  # +2 из-за заголовка
 
-        # Проверка, существует ли файл изображения
-        if os.path.exists(image_path):
-            with open(image_path, 'rb') as image_file:
-                # Отправляем фотографию с сообщением
+        # Проверка, если row найден, и получение file_id
+        if found_row:
+            file_id = worksheet.cell(found_row, 2).value  # Получаем file_id из второго столбца
+
+            if file_id:
+                # Отправляем фотографию по file_id
                 message = f"На этой неделе с вами работал(-а): {survey_info['obj']}. Пожалуйста, пройдите опрос: {survey_info['questionary']}"
-                bot.send_photo(chat_id, photo=image_file, caption=message)
+                bot.send_photo(chat_id, photo=file_id, caption=message)
+            else:
+                # Если file_id отсутствует, отправляем стандартное изображение
+                send_unknown_image(chat_id, survey_info)
         else:
-            with open("images/unknown.png", 'rb') as image_file:
-                # Отправляем фотографию с сообщением
-                message = f"На этой неделе с вами работал(-а): {survey_info['obj']}. Пожалуйста, пройдите опрос: {survey_info['questionary']}"
-                bot.send_photo(chat_id, photo=image_file, caption=message)
+            # Если не найдено имя, отправляем стандартное изображение
+            send_unknown_image(chat_id, survey_info)
 
         # Начинаем опрос
         time.sleep(1)
@@ -183,6 +219,16 @@ def start_next_survey(chat_id):
     else:
         # Очередь опросов пуста
         data['current_survey'] = None
+
+
+
+# Функция отправки стандартного изображения при отсутствии file_id
+def send_unknown_image(chat_id, survey_info):
+    with open("images/unknown.png", 'rb') as image_file:
+        message = f"На этой неделе с вами работал(-а): {survey_info['obj']}. Пожалуйста, пройдите опрос: {survey_info['questionary']}"
+        bot.send_photo(chat_id, photo=image_file, caption=message)
+
+
 
 def load_questions_for_survey(chat_id):
     data = user_data.get(chat_id)
@@ -353,8 +399,8 @@ def run_survey_dispatch():
         else:
             print(f"Чат ID для {subj} не найден")
 
-# Запланировать выполнение каждый час
-schedule.every().hour.do(run_survey_dispatch)
+# Запланировать выполнение
+schedule.every().day.at("10:10").do(run_survey_dispatch)
 
 # Функция для запуска планировщика
 def scheduler():

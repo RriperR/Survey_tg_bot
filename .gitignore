@@ -4,4 +4,4 @@ __pycache__/
 *.sql
 *.env
 .env
-images/
+app/images/
