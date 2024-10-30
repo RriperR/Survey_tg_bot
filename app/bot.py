@@ -1,31 +1,31 @@
-import telebot
-from telebot import types, apihelper
-import gspread
-from oauth2client.service_account import ServiceAccountCredentials
-import schedule
-import threading
+import os
 import time
 import datetime
-import psycopg2
+import schedule
+import threading
 import subprocess
-import os
+
+import telebot
+import gspread
+import psycopg2
+
+from telebot import types, apihelper
+from oauth2client.service_account import ServiceAccountCredentials
 from dotenv import load_dotenv
+
+
 
 # Настройка авторизации Google Sheets API
 scope = ["https://spreadsheets.google.com/feeds", "https://www.googleapis.com/auth/drive"]
-# Замените 'your_credentials_file.json' на имя вашего файла с учетными данными
-creds = ServiceAccountCredentials.from_json_keyfile_name('q-bot-435919-f9cd6316f9b0.json', scope)
+creds = ServiceAccountCredentials.from_json_keyfile_name("q-bot-key2.json", scope)
 client = gspread.authorize(creds)
 
 # Открываем таблицу по имени
-# Замените "Сотрудник 2.0 Таблица" на имя вашей таблицы
-spreadsheet = client.open("Сотрудник 2.0 Таблица")
+spreadsheet = client.open("Worker-2.0_Table")
 worksheet = spreadsheet.sheet1
 
-
-
-load_dotenv()
 # Получение переменных окружения
+load_dotenv()
 TELEGRAM_BOT_TOKEN = os.environ.get('BOT_TOKEN')
 DB_HOST = os.environ.get('DB_HOST')
 DB_NAME = os.environ.get('DB_NAME')
@@ -64,17 +64,12 @@ def get_db_connection():
     )
     return conn
 
-# try:
-#     get_db_connection()
-#     print('Success')
-# except Exception as ex:
-#     print(ex)
 
 # Обработчик команды /start для регистрации пользователя
 @bot.message_handler(commands=['start'])
 def start(message):
     chat_id = message.chat.id
-    bot.send_message(chat_id, "Загрузка данных...")
+    bot.send_message(chat_id, "Загрузка данных.............")
 
     # Получаем список ФИО из первого столбца
     names = worksheet.col_values(1)[1:]  # Пропускаем заголовок
@@ -85,6 +80,8 @@ def start(message):
         markup.add(name)
 
     bot.send_message(chat_id, "Выберите ФИО:", reply_markup=markup)
+
+
 
 # Обработчик выбора имени
 @bot.message_handler(func=lambda message: True)
@@ -102,11 +99,12 @@ def handle_name_selection(message):
 
     bot.send_message(chat_id, f"Вы выбрали {selected_name}. Всё верно?", reply_markup=markup)
 
+
+
 # Обработка нажатия на кнопку подтверждения
 @bot.callback_query_handler(func=lambda call: call.data.startswith("confirm_"))
 def handle_confirmation(call):
     chat_id = call.message.chat.id
-
 
     if call.data == "confirm_yes":
         # Проверяем, зарегистрирован ли уже этот chat_id
@@ -144,6 +142,8 @@ def handle_confirmation(call):
         bot.send_message(chat_id, "Пожалуйста, выберите ФИО снова с помощью команды /start")
         del user_names[chat_id]  # Очищаем сохраненное имя для пользователя
 
+
+
 # Обработчик для получения фото и сохранения file_id в 2-й столбец
 @bot.message_handler(content_types=['photo'])
 def handle_photo(message):
@@ -168,6 +168,8 @@ def handle_photo(message):
             bot.send_message(chat_id, "Фото успешно сохранено! Регистрация завершена.")
     else:
         bot.send_message(chat_id, "Пожалуйста, сначала зарегистрируйтесь с помощью команды /start.")
+
+
 
 # Функции для опросов
 def start_next_survey(chat_id):
@@ -222,6 +224,7 @@ def start_next_survey(chat_id):
 
 
 
+
 # Функция отправки стандартного изображения при отсутствии file_id
 def send_unknown_image(chat_id, survey_info):
     with open("images/unknown.png", 'rb') as image_file:
@@ -249,6 +252,8 @@ def load_questions_for_survey(chat_id):
                 q_type = row[i + 1] if i + 1 < len(row) else ''
                 data['current_survey']['questions'].append((question, q_type))
             break  # Нашли нужный опрос, выходим из цикла
+
+
 
 def send_next_question(chat_id):
     data = user_data.get(chat_id)
@@ -278,6 +283,8 @@ def send_next_question(chat_id):
         # Вопросы закончились, завершаем опрос
         finalize_questionnaire(chat_id)
 
+
+
 # Обработчик текстовых ответов
 def handle_text_response(message):
     chat_id = message.chat.id
@@ -290,6 +297,8 @@ def handle_text_response(message):
     survey['answers'].append((survey['questions'][index][0], message.text))
     survey['current_question_index'] += 1
     finalize_questionnaire(chat_id)
+
+
 
 # Обработчик оценок
 @bot.callback_query_handler(func=lambda call: call.data.startswith("rate_"))
@@ -311,6 +320,8 @@ def handle_rating_callback(call):
     except Exception as e:
         print(f"Ошибка при обработке рейтинга: {e}")
 
+
+
 # Функция для завершения опроса
 def finalize_questionnaire(chat_id):
     data = user_data.get(chat_id)
@@ -328,6 +339,13 @@ def finalize_questionnaire(chat_id):
     # Открываем 4 лист (результаты)
     worksheet4 = spreadsheet.get_worksheet(3)
     worksheet4.append_row(row_data[1::])
+
+    # Открываем другую Google таблицу
+    second_spreadsheet = client.open("survey_answers")
+    second_worksheet = second_spreadsheet.sheet1
+
+    # Добавляем данные в другую таблицу
+    second_worksheet.append_row(row_data[1::])
 
     bot.send_message(chat_id, "Спасибо за обратную связь!")
 
@@ -352,6 +370,8 @@ def finalize_questionnaire(chat_id):
     # Очищаем текущий опрос и запускаем следующий, если есть
     data['current_survey'] = None
     start_next_survey(chat_id)
+
+
 
 # Функция для запуска опросов
 def run_survey_dispatch():
@@ -399,8 +419,10 @@ def run_survey_dispatch():
         else:
             print(f"Чат ID для {subj} не найден")
 
+
+
 # Запланировать выполнение
-schedule.every().day.at("10:10").do(run_survey_dispatch)
+schedule.every().day.at("13:54").do(run_survey_dispatch)
 
 # Функция для запуска планировщика
 def scheduler():

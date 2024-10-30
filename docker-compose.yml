@@ -14,7 +14,7 @@ services:
   db:
     env_file:
       - .env
-    image: postgres:13
+    image: postgres
     container_name: survey_db
     volumes:
       - pgdata:/var/lib/postgresql/data
