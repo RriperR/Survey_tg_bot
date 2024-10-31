@@ -6,7 +6,7 @@ RUN ln -sf /usr/share/zoneinfo/Europe/Moscow /etc/localtime && \
     echo "Europe/Moscow" > /etc/timezone
 
 # Устанавливаем рабочую директорию
-WORKDIR /app
+WORKDIR /code
 
 # Копируем файл требований и устанавливаем зависимости
 COPY requirements.txt .
@@ -16,4 +16,4 @@ RUN pip install --no-cache-dir -r requirements.txt
 COPY . .
 
 # Указываем команду запуска
-CMD ["python", "bot.py"]
+CMD ["python", "./app/bot.py"]

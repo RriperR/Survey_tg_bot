@@ -2,14 +2,13 @@ services:
   bot:
     env_file:
       - .env
-    image: riper3d/survey_bot
+    build: .
     container_name: survey_bot
     depends_on:
       - db
     volumes:
-      - ./app/bot.py:/app/bot.py
-      - ./app/images:/app/images
-    restart: always
+      - ./app/bot.py:/code/app/bot.py
+
 
   db:
     env_file:
@@ -20,7 +19,7 @@ services:
       - pgdata:/var/lib/postgresql/data
       - ./init.sql:/docker-entrypoint-initdb.d/init.sql
     ports:
-      - "5432:5432"
+      - "5435:5432"
     restart: always
 
 volumes:
