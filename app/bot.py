@@ -1,22 +1,15 @@
-import schedule
-import threading
+from apscheduler.schedulers.background import BackgroundScheduler
 
 from reg import start, handle_name_selection, handle_confirmation, handle_photo
 from survey import *
 
 
-# Запланировать выполнение
-schedule.every().day.at("18:23").do(run_survey_dispatch)
+# Настройка планировщика
+scheduler = BackgroundScheduler()
 
 # Функция для запуска планировщика
-def scheduler():
-    while True:
-        schedule.run_pending()
-        time.sleep(1)
-
-# Запускаем планировщик в отдельном потоке
-scheduler_thread = threading.Thread(target=scheduler)
-scheduler_thread.start()
+scheduler.add_job(run_survey_dispatch, 'cron', hour=9, minute=56)
+scheduler.start()
 
 # Запуск бота
 bot.polling(none_stop=True)
