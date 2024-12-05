@@ -178,6 +178,26 @@ def finalize_questionnaire(chat_id):
 
     bot.send_message(chat_id, "Спасибо за обратную связь!")
 
+    # Отправляем результаты опроса пользователю, которого оценивали
+    obj_name = survey['obj']  # Имя оцениваемого
+    obj_chat_id = fio_chatid_dict.get(obj_name)  # Находим chat_id оцениваемого
+
+    if obj_chat_id:
+        try:
+            results_message = f"Вам пришли результаты опроса\n" \
+                              f"Тема: {survey['questionary']}\n\n\n"
+
+            for question, answer in survey['answers']:
+                # Убираем все после первого переноса строки
+                cleaned_question = question.split('\n', 1)[0]
+                results_message += f"Вопрос: {cleaned_question}\n<code>Оценка: {answer}</code>\n\n"
+
+            bot.send_message(obj_chat_id, results_message, parse_mode="HTML")
+        except Exception as ex:
+            print(f"Ошибка при отправке результатов {obj_name} (chat_id {obj_chat_id}): {ex}")
+    else:
+        print(f"Чат ID для {obj_name} не найден.")
+
     while len(row_data) < 14:
         row_data.append(None)
 

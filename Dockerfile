@@ -5,7 +5,6 @@ FROM python:3.9-slim
 RUN ln -sf /usr/share/zoneinfo/Europe/Moscow /etc/localtime && \
     echo "Europe/Moscow" > /etc/timezone
 
-ENV PYTHONUNBUFFERED=1
 
 # Устанавливаем рабочую директорию
 WORKDIR /code
@@ -19,6 +18,8 @@ COPY . .
 
 # Меняем рабочую директорию на /code/app
 WORKDIR /code/app
+ENV PYTHONUNBUFFERED=1
+ENV PYTHONPATH="/code/app"
 
 # Указываем команду запуска
 CMD ["python", "bot.py"]

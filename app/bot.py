@@ -8,7 +8,7 @@ from survey import *
 scheduler = BackgroundScheduler()
 
 # Функция для запуска планировщика
-scheduler.add_job(run_survey_dispatch, 'cron', hour=9, minute=56)
+scheduler.add_job(run_survey_dispatch, 'cron', hour=16, minute=6)
 scheduler.start()
 
 # Запуск бота
