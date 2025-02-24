@@ -5,7 +5,6 @@ from init import *
 from models import DatabaseManager
 
 
-
 # Функции для опросов
 def start_next_survey(chat_id):
     data = user_data.get(chat_id)
@@ -227,11 +226,18 @@ def run_survey_dispatch():
         subj = row[0].strip()    # ФИО субъекта (кто будет проходить опрос)
         obj = row[1].strip()     # ФИО объекта (кого оценивают)
         questionary = row[2].strip()  # Название опроса
+        date_from_sheet = row[3].strip() # Дата для отправки опроса
+
+        try:
+            day = datetime.datetime.strptime(date_from_sheet, "%d.%m.%Y").date()
+        except ValueError:
+            print(f"Дата неправильного формата: {date_from_sheet}")
+            continue  # Пропускаем этот опрос и переходим к следующему
 
         # Проверяем, есть ли chat_id для данного ФИО
         chat_id = fio_chatid_dict.get(subj)
 
-        if chat_id:
+        if chat_id and day == datetime.date.today():
             try:
                 chat_id = int(chat_id)  # Преобразуем chat_id в целое число
 

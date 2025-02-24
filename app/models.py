@@ -2,6 +2,7 @@ import datetime
 
 import psycopg2
 
+
 class DatabaseManager:
     def __init__(self, host, database, user, password):
         self.host = host
