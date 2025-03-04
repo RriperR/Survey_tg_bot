@@ -6,7 +6,7 @@ from telebot import types
 @bot.message_handler(commands=['start'])
 def start(message):
     chat_id = message.chat.id
-    bot.send_message(chat_id, "Загрузка данных.....")
+    bot.send_message(chat_id, "Загрузка данных...")
 
     # Получаем список ФИО из первого столбца
     names = worksheet.col_values(1)[1:]  # Пропускаем заголовок

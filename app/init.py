@@ -14,7 +14,7 @@ creds = ServiceAccountCredentials.from_json_keyfile_name("../q-bot-key2.json", s
 client = gspread.authorize(creds)
 
 # Открываем таблицу по имени
-spreadsheet = client.open("Worker-2.0_Table")
+spreadsheet = client.open(os.environ.get('TABLE'))
 worksheet = spreadsheet.sheet1
 
 # Получение переменных окружения

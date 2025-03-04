@@ -173,12 +173,12 @@ def finalize_questionnaire(chat_id):
 
     second_spreadsheet = client.open("survey_answers")
     second_worksheet = second_spreadsheet.sheet1
-    second_worksheet.append_row(row_data[1::])
+    second_worksheet.append_row(row_data)
 
     bot.send_message(chat_id, "Спасибо за обратную связь!")
 
     # Отправляем результаты опроса пользователю, которого оценивали
-    obj_name = survey['obj']  # Имя оцениваемого
+    '''obj_name = survey['obj']  # Имя оцениваемого
     obj_chat_id = fio_chatid_dict.get(obj_name)  # Находим chat_id оцениваемого
 
     if obj_chat_id:
@@ -195,7 +195,7 @@ def finalize_questionnaire(chat_id):
         except Exception as ex:
             print(f"Ошибка при отправке результатов {obj_name} (chat_id {obj_chat_id}): {ex}")
     else:
-        print(f"Чат ID для {obj_name} не найден.")
+        print(f"Чат ID для {obj_name} не найден.")'''
 
     while len(row_data) < 14:
         row_data.append(None)
@@ -226,12 +226,11 @@ def run_survey_dispatch():
         subj = row[0].strip()    # ФИО субъекта (кто будет проходить опрос)
         obj = row[1].strip()     # ФИО объекта (кого оценивают)
         questionary = row[2].strip()  # Название опроса
-        date_from_sheet = row[3].strip() # Дата для отправки опроса
+        date_from_sheet = row[4].strip() # Дата для отправки опроса
 
         try:
             day = datetime.datetime.strptime(date_from_sheet, "%d.%m.%Y").date()
         except ValueError:
-            print(f"Дата неправильного формата: {date_from_sheet}")
             continue  # Пропускаем этот опрос и переходим к следующему
 
         # Проверяем, есть ли chat_id для данного ФИО
