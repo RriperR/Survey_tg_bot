@@ -1,14 +1,28 @@
-import time, datetime
+import time
+import datetime
+import logging
 
 from telebot import types
 from init import *
 from models import DatabaseManager
 
 
+# Настройка логирования
+logger = logging.getLogger("survey")  # Отдельный логгер "survey"
+logger.setLevel(logging.INFO)
+
+handler = logging.FileHandler("/code/logs/survey.log", encoding="utf-8")
+formatter = logging.Formatter("%(asctime)s - %(levelname)s - %(message)s")
+handler.setFormatter(formatter)
+
+logger.addHandler(handler)
+
+
 # Функции для опросов
 def start_next_survey(chat_id):
     data = user_data.get(chat_id)
     if not data:
+        logger.warning(f"Нет данных для пользователя {chat_id}")
         return
 
     if data['survey_queue']:
@@ -23,6 +37,8 @@ def start_next_survey(chat_id):
             'questions': [],
             'answers': []
         }
+
+        logger.info(f"Запущен опрос '{survey_info['questionary']}' для {chat_id}")
 
         # Загружаем вопросы для этого опроса
         load_questions_for_survey(chat_id)
@@ -55,6 +71,7 @@ def start_next_survey(chat_id):
     else:
         # Очередь опросов пуста
         data['current_survey'] = None
+        logger.info(f"Очередь опросов пуста для {chat_id}")
 
 
 
@@ -70,6 +87,7 @@ def send_unknown_image(chat_id, survey_info):
 def load_questions_for_survey(chat_id):
     data = user_data.get(chat_id)
     if not data or not data['current_survey']:
+        logger.warning(f"Нет активного опроса для {chat_id} (load_questions_for_survey)")
         return
 
     questionary = data['current_survey']['questionary']
@@ -85,6 +103,7 @@ def load_questions_for_survey(chat_id):
                 question = row[i]
                 q_type = row[i + 1] if i + 1 < len(row) else ''
                 data['current_survey']['questions'].append((question, q_type))
+            logger.info(f"Опрос {questionary} для {chat_id} найден")
             break  # Нашли нужный опрос, выходим из цикла
 
 
@@ -92,6 +111,7 @@ def load_questions_for_survey(chat_id):
 def send_next_question(chat_id):
     data = user_data.get(chat_id)
     if not data or not data['current_survey']:
+        logger.warning(f"Нет активного опроса для {chat_id} (send_next_question)")
         return
 
     survey = data['current_survey']
@@ -124,6 +144,7 @@ def handle_text_response(message):
     chat_id = message.chat.id
     data = user_data.get(chat_id)
     if not data or not data['current_survey']:
+        logger.warning(f"Получена оценка '{message.text}', но нет активного опроса для {chat_id}")
         return
 
     survey = data['current_survey']
@@ -142,6 +163,7 @@ def handle_rating_callback(call):
         chat_id = call.message.chat.id
         data = user_data.get(chat_id)
         if not data or not data['current_survey']:
+            logger.warning(f"Получена оценка {rating}, но нет активного опроса для {chat_id}")
             return
 
         survey = data['current_survey']
@@ -152,7 +174,7 @@ def handle_rating_callback(call):
         bot.answer_callback_query(call.id)
         send_next_question(chat_id)
     except Exception as e:
-        print(f"Ошибка при обработке рейтинга: {e}")
+        logger.error(f"Ошибка при обработке рейтинга: {e}")
 
 
 
@@ -160,6 +182,7 @@ def handle_rating_callback(call):
 def finalize_questionnaire(chat_id):
     data = user_data.get(chat_id)
     if not data or not data['current_survey']:
+        logger.warning(f"Попытка завершить опрос, но нет активного опроса для {chat_id}")
         return
 
     survey = data['current_survey']
@@ -176,26 +199,6 @@ def finalize_questionnaire(chat_id):
     second_worksheet.append_row(row_data)
 
     bot.send_message(chat_id, "Спасибо за обратную связь!")
-
-    # Отправляем результаты опроса пользователю, которого оценивали
-    '''obj_name = survey['obj']  # Имя оцениваемого
-    obj_chat_id = fio_chatid_dict.get(obj_name)  # Находим chat_id оцениваемого
-
-    if obj_chat_id:
-        try:
-            results_message = f"Вам пришли результаты опроса\n" \
-                              f"Тема: {survey['questionary']}\n\n\n"
-
-            for question, answer in survey['answers']:
-                # Убираем все после первого переноса строки
-                cleaned_question = question.split('\n', 1)[0]
-                results_message += f"Вопрос: {cleaned_question}\n<code>Оценка: {answer}</code>\n\n"
-
-            bot.send_message(obj_chat_id, results_message, parse_mode="HTML")
-        except Exception as ex:
-            print(f"Ошибка при отправке результатов {obj_name} (chat_id {obj_chat_id}): {ex}")
-    else:
-        print(f"Чат ID для {obj_name} не найден.")'''
 
     while len(row_data) < 14:
         row_data.append(None)
@@ -214,6 +217,7 @@ def finalize_questionnaire(chat_id):
 # Функция для запуска опросов
 def run_survey_dispatch():
     global user_data, fio_chatid_dict, spreadsheet
+    logger.info("Запуск процесса назначения опросов")
 
     # Открываем второй лист (назначения опросов)
     worksheet2 = spreadsheet.get_worksheet(1)  # Индексация начинается с 0
@@ -236,29 +240,29 @@ def run_survey_dispatch():
         # Проверяем, есть ли chat_id для данного ФИО
         chat_id = fio_chatid_dict.get(subj)
 
-        if chat_id and day == datetime.date.today():
-            try:
-                chat_id = int(chat_id)  # Преобразуем chat_id в целое число
+        if day == datetime.date.today():
+            if chat_id:
+                try:
+                    chat_id = int(chat_id)  # Преобразуем chat_id в целое число
 
-                if chat_id not in user_data:
-                    user_data[chat_id] = {
-                        'survey_queue': [],
-                        'current_survey': None
-                    }
+                    # Создаём опрос, если его нет
+                    user_data.setdefault(chat_id, {'survey_queue': [], 'current_survey': None})
 
-                # Добавляем опрос в очередь пользователя
-                user_data[chat_id]['survey_queue'].append({
-                    'subj': subj,
-                    'obj': obj,
-                    'questionary': questionary
-                })
+                    # Добавляем опрос в очередь пользователя
+                    user_data[chat_id]['survey_queue'].append({
+                        'subj': subj,
+                        'obj': obj,
+                        'questionary': questionary
+                    })
 
-                # Если пользователь не проходит опрос, запускаем следующий
-                if user_data[chat_id]['current_survey'] is None:
-                    start_next_survey(chat_id)
+                    # Если пользователь не проходит опрос, запускаем следующий
+                    if user_data[chat_id]['current_survey'] is None:
+                        start_next_survey(chat_id)
 
-                print(f"Опрос '{questionary}' добавлен в очередь для пользователя {subj} (chat_id: {chat_id})")
-            except Exception as e:
-                print(f"Не удалось добавить опрос для {subj}. Ошибка: {e}")
+                    logger.info(f"Опрос '{questionary}' добавлен в очередь для {subj} (chat_id: {chat_id})")
+                except Exception as e:
+                    logger.error(f"Не удалось добавить опрос для {subj}. Ошибка: {e}")
+            else:
+                logger.warning(f"Чат ID для {subj} не найден")
         else:
-            print(f"Чат ID для {subj} не найден")
+            logger.info(f"Дата проведения опроса для {subj} не совпадает с сегодняшней: {day}")

@@ -1,22 +1,46 @@
+import logging
+
 from init import bot, worksheet, user_names, fio_chatid_dict
 from telebot import types
+
+
+# Настройка логирования
+logger = logging.getLogger("reg")
+logger.setLevel(logging.INFO)
+
+handler = logging.FileHandler("/code/logs/reg.log", encoding="utf-8")
+formatter = logging.Formatter("%(asctime)s - %(levelname)s - %(message)s")
+handler.setFormatter(formatter)
+
+logger.addHandler(handler)
 
 
 # Обработчик команды /start для регистрации пользователя
 @bot.message_handler(commands=['start'])
 def start(message):
     chat_id = message.chat.id
+    logger.info(f"Получена команда /start от chat_id={chat_id}")
+
     bot.send_message(chat_id, "Загрузка данных...")
 
-    # Получаем список ФИО из первого столбца
-    names = worksheet.col_values(1)[1:]  # Пропускаем заголовок
+    try:
+        names = worksheet.col_values(1)[1:]  # Пропускаем заголовок
+        logger.info(f"Загружены ФИО из таблицы: {len(names)} записей")
 
-    # Создаем клавиатуру
-    markup = types.ReplyKeyboardMarkup(one_time_keyboard=True, resize_keyboard=True)
-    for name in names:
-        markup.add(name)
+        if not names:
+            bot.send_message(chat_id, "Ошибка: список ФИО пуст.")
+            logger.warning(f"Пустой список ФИО для chat_id={chat_id}")
+            return
 
-    bot.send_message(chat_id, "Выберите ФИО:", reply_markup=markup)
+        markup = types.ReplyKeyboardMarkup(one_time_keyboard=True, resize_keyboard=True)
+        for name in names:
+            markup.add(name)
+
+        bot.send_message(chat_id, "Выберите ФИО:", reply_markup=markup)
+
+    except Exception as e:
+        logger.error(f"Ошибка при загрузке ФИО: {e}", exc_info=True)
+        bot.send_message(chat_id, "Произошла ошибка при загрузке данных.")
 
 
 
@@ -25,6 +49,7 @@ def start(message):
 def handle_name_selection(message):
     chat_id = message.chat.id
     selected_name = message.text.strip()
+    logger.info(f"Пользователь chat_id={chat_id} выбрал ФИО: {selected_name}")
 
     # Сохраняем выбранное имя в глобальной переменной для пользователя
     user_names[chat_id] = selected_name
@@ -53,6 +78,7 @@ def handle_confirmation(call):
             registered_name = worksheet.cell(row_index, 1).value  # ФИО в 1 столбце
 
             bot.send_message(chat_id, f"Вы уже зарегистрировались как {registered_name}.", reply_markup=types.ReplyKeyboardRemove())
+            logger.info(f"chat_id={chat_id} уже зарегистрирован как {registered_name}")
         else:
             selected_name = user_names.get(chat_id).strip()
 
@@ -70,14 +96,18 @@ def handle_confirmation(call):
                 bot.send_message(chat_id, f"Вы успешно зарегистрировались как {selected_name}.", reply_markup=types.ReplyKeyboardRemove())
                 bot.send_message(chat_id, "Пожалуйста, отправьте ваше фото:")
 
+                logger.info(f"chat_id={chat_id} зарегистрирован как {selected_name}, записан в строку {found_row}")
+
                 # Обновляем словарь fio_chatid_dict
                 fio_chatid_dict[selected_name] = str(chat_id)
             else:
                 bot.send_message(chat_id, "Не удалось найти ваше имя в таблице.")
+                logger.warning(f"chat_id={chat_id} выбрал {selected_name}, но имя не найдено в таблице")
     elif call.data == "confirm_no":
         # Если пользователь отменил выбор, предлагаем выбрать снова
         bot.send_message(chat_id, "Пожалуйста, выберите ФИО снова с помощью команды /start")
         del user_names[chat_id]  # Очищаем сохраненное имя для пользователя
+        logger.info(f"chat_id={chat_id} отменил выбор имени")
 
 
 
@@ -85,6 +115,7 @@ def handle_confirmation(call):
 @bot.message_handler(content_types=['photo'])
 def handle_photo(message):
     chat_id = message.chat.id
+    logger.info(f"Получено фото от chat_id={chat_id}")
 
     # Проверяем, зарегистрирован ли пользователь и подтвердил ли он ФИО
     if chat_id in user_names and isinstance(user_names[chat_id], dict):
@@ -103,5 +134,7 @@ def handle_photo(message):
         if found_row:
             worksheet.update_cell(found_row, 2, file_id)  # Записываем file_id в 2 столбец
             bot.send_message(chat_id, "Фото успешно сохранено! Регистрация завершена.")
+            logger.info(f"chat_id={chat_id} отправил фото, записано в строку {found_row}")
     else:
         bot.send_message(chat_id, "Пожалуйста, сначала зарегистрируйтесь с помощью команды /start.")
+        logger.warning(f"chat_id={chat_id} попытался отправить фото без регистрации")

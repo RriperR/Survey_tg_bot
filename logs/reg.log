@@ -1,0 +1,8 @@
+2025-03-05 10:59:18,215 - WARNING - /etc/timezone is deprecated on Debian, and no longer reliable. Ignoring.
+2025-03-05 10:59:18,218 - INFO - Adding job tentatively -- it will be properly scheduled when the scheduler starts
+2025-03-05 10:59:18,220 - INFO - Added job "run_survey_dispatch" to job store "default"
+2025-03-05 10:59:18,220 - INFO - Scheduler started
+2025-03-05 10:59:27,180 - INFO - Получена команда /start от chat_id=1891022857
+2025-03-05 10:59:27,591 - INFO - Загружены ФИО из таблицы: 43 записей
+2025-03-05 10:59:32,454 - INFO - Пользователь chat_id=1891022857 выбрал ФИО: Абдулаева Пари Абдусаламовна
+2025-03-05 10:59:35,013 - INFO - chat_id=1891022857 уже зарегистрирован как Шамов Салам Меджидович
