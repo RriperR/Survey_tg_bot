@@ -13,9 +13,11 @@ scope = ["https://spreadsheets.google.com/feeds", "https://www.googleapis.com/au
 creds = ServiceAccountCredentials.from_json_keyfile_name("../q-bot-key2.json", scope)
 client = gspread.authorize(creds)
 
-# Открываем таблицу по имени
+# Открываем таблицы по имени
 spreadsheet = client.open(os.environ.get('TABLE'))
 worksheet = spreadsheet.sheet1
+second_spreadsheet = client.open(os.environ.get('ANSWERS_TABLE'))
+second_worksheet = second_spreadsheet.sheet1
 
 # Получение переменных окружения
 load_dotenv()
@@ -30,19 +32,79 @@ bot = telebot.TeleBot(TELEGRAM_BOT_TOKEN)
 apihelper.RETRY_ON_ERROR = True
 
 # Глобальные переменные и словари
-user_names = {}
-user_data = {}
-fio_chatid_dict = {}
-questions = {}
-stuff = {}
+cached_employees = {}        # { 'ФИО': {'file_id': '...', 'chat_id': '...', 'spec': '...'} }
+cached_assignments = []      # [{'subj': '...', 'obj': '...', 'questionary': '...', 'date': '...'}, ...]
+cached_questionnaires = {}   # {'Название опросника': [(вопрос1, тип1), (вопрос2, тип2), ...]}
+user_data = {}               # Состояния пользователей (очередь опросов, текущие опросы)
 
 # Получаем данные из первой таблицы
 names = worksheet.col_values(1)[1:]     # ФИО из первого столбца, пропускаем заголовок
 chat_ids = worksheet.col_values(3)[1:]  # chat_id из третьего столбца, пропускаем заголовок
 
-# Создаем словарь ФИО: chat_id
-fio_chatid_dict = {name.strip(): chat_id for name, chat_id in zip(names, chat_ids) if chat_id}
 
-# Создаем словарь ФИО: индекс строки в таблице
-for index, name in enumerate(names, start=2):  # Индексация с 2, так как первая строка - заголовок
-    stuff[name.strip()] = index
+def update_local_cache():
+    """
+    Загружает/обновляет данные из Google Sheets в локальные переменные (или БД),
+    чтобы снизить кол-во обращений к API Google.
+    """
+    global cached_employees, cached_assignments, cached_questionnaires
+
+    # Перед перезаписью чистим текущие данные
+    cached_employees.clear()
+    cached_assignments.clear()
+    cached_questionnaires.clear()
+
+
+    # ================== Загрузка данных из 1-й вкладки: Список сотрудников ==================
+    worksheet1 = spreadsheet.get_worksheet(0)                # 0 - первая вкладка
+    all_rows_1 = worksheet1.get_all_values()[1:]             # Пропускаем заголовок
+    for row in all_rows_1:
+        fio = row[0].strip()
+        file_id = row[1].strip()
+        chat_id = row[2].strip()
+        spec = row[3].strip() if len(row) > 3 else ""
+
+        cached_employees[fio] = {
+            'file_id': file_id,
+            'chat_id': chat_id,
+            'spec': spec
+        }
+
+
+    # ================== Загрузка данных из 2-й вкладки: Назначения опросов ==================
+    worksheet2 = spreadsheet.get_worksheet(1)                # 1 - вторая вкладка
+    all_rows_2 = worksheet2.get_all_values()[1:]             # Пропускаем заголовок
+    for row in all_rows_2:
+        subj = row[0].strip()
+        obj = row[1].strip()
+        questionary = row[2].strip()
+        day_of_week = row[3].strip()
+        date_str = row[4].strip()
+
+        cached_assignments.append({
+            'subj': subj,
+            'obj': obj,
+            'questionary': questionary,
+            'day_of_week': day_of_week,
+            'date': date_str
+        })
+
+
+    # ================== Загрузка данных из 3-й вкладки: Вопросы по опросникам ===============
+    worksheet3 = spreadsheet.get_worksheet(2)                # 2 - третья вкладка
+    all_rows_3 = worksheet3.get_all_values()[1:]             # Пропускаем заголовок
+    # Форматируем в виде: cached_questionnaires['Название опросника'] = [(вопрос, тип), ...]
+    for row in all_rows_3:
+        questionary_name = row[0].strip()
+        if questionary_name not in cached_questionnaires:
+            cached_questionnaires[questionary_name] = []
+
+        i = 1
+        while i < len(row):
+            question_text = row[i].strip()
+            question_type = ""
+            if i + 1 < len(row):
+                question_type = row[i+1].strip()
+            cached_questionnaires[questionary_name].append((question_text, question_type))
+            i += 2
+

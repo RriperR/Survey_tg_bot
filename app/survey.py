@@ -43,29 +43,20 @@ def start_next_survey(chat_id):
         # Загружаем вопросы для этого опроса
         load_questions_for_survey(chat_id)
 
-        # Получаем строку для `obj` из Google Sheets, чтобы извлечь file_id
-        obj_names = worksheet.col_values(1)[1:]  # Все имена в первом столбце, пропуская заголовок
-        found_row = None
-        for index, name in enumerate(obj_names):
-            if name.strip() == survey_info['obj']:
-                found_row = index + 2  # +2 из-за заголовка
-
-        # Проверка, если row найден, и получение file_id
-        if found_row:
-            file_id = worksheet.cell(found_row, 2).value  # Получаем file_id из второго столбца
-
-            if file_id:
-                # Отправляем фотографию по file_id
-                message = f"На этой неделе с вами работал(-а): {survey_info['obj']}. Пожалуйста, пройдите опрос: {survey_info['questionary']}"
-                bot.send_photo(chat_id, photo=file_id, caption=message)
-            else:
-                # Если file_id отсутствует, отправляем стандартное изображение
-                send_unknown_image(chat_id, survey_info)
+        # Находим file_id для оцениваемого сотрудника
+        obj_info = cached_employees.get(survey_info['obj'])
+        if obj_info and obj_info['file_id']:
+            file_id = obj_info['file_id']
+            message = (
+                f"На этой неделе с вами работал(-а): {survey_info['obj']}.\n"
+                f"Пожалуйста, пройдите опрос: {survey_info['questionary']}"
+            )
+            bot.send_photo(chat_id, photo=file_id, caption=message)
         else:
-            # Если не найдено имя, отправляем стандартное изображение
+            # Если file_id не найден, отправляем стандартное изображение
             send_unknown_image(chat_id, survey_info)
 
-        # Начинаем опрос
+        # Небольшая задержка и отправка первого вопроса
         time.sleep(1)
         send_next_question(chat_id)
     else:
@@ -91,20 +82,13 @@ def load_questions_for_survey(chat_id):
         return
 
     questionary = data['current_survey']['questionary']
+    questions = cached_questionnaires.get(questionary, [])
 
-    # Открываем 3 лист (вопросы)
-    worksheet3 = spreadsheet.get_worksheet(2)
-    rows = worksheet3.get_all_values()[1:]  # Пропускаем заголовок
-
-    for row in rows:
-        if row[0] == questionary:
-            # Предполагаем, что вопросы и их типы идут попарно начиная с индекса 1
-            for i in range(1, len(row), 2):
-                question = row[i]
-                q_type = row[i + 1] if i + 1 < len(row) else ''
-                data['current_survey']['questions'].append((question, q_type))
-            logger.info(f"Опрос {questionary} для {chat_id} найден")
-            break  # Нашли нужный опрос, выходим из цикла
+    if questions:
+        data['current_survey']['questions'] = questions
+        logger.info(f"Опрос {questionary} для {chat_id} найден в кешированных данных.")
+    else:
+        logger.warning(f"Опрос {questionary} не найден в локальном кеше.")
 
 
 
@@ -191,11 +175,9 @@ def finalize_questionnaire(chat_id):
     for question, answer in survey['answers']:
         row_data.extend([question, answer])
 
-    worksheet4 = spreadsheet.get_worksheet(3)
-    worksheet4.append_row(row_data[1::])
+    # worksheet4 = spreadsheet.get_worksheet(3)
+    # worksheet4.append_row(row_data[1::])
 
-    second_spreadsheet = client.open("survey_answers")
-    second_worksheet = second_spreadsheet.sheet1
     second_worksheet.append_row(row_data)
 
     bot.send_message(chat_id, "Спасибо за обратную связь!")
@@ -207,7 +189,8 @@ def finalize_questionnaire(chat_id):
         with DatabaseManager(DB_HOST, DB_NAME, DB_USER, DB_PASSWORD) as db:
             db.insert_survey_response(row_data)
     except Exception as ex:
-        bot.send_message(chat_id, f"Не удалось сохранить в базу данных: {ex}")
+        bot.send_message(chat_id, f"Не удалось сохранить ответы в базу данных")
+        logger.error(f"Не удалось сохранить ответы в базу данных: {ex}")
 
     data['current_survey'] = None
     start_next_survey(chat_id)
@@ -216,34 +199,30 @@ def finalize_questionnaire(chat_id):
 
 # Функция для запуска опросов
 def run_survey_dispatch():
-    global user_data, fio_chatid_dict, spreadsheet
+    global user_data
     logger.info("Запуск процесса назначения опросов")
 
-    # Открываем второй лист (назначения опросов)
-    worksheet2 = spreadsheet.get_worksheet(1)  # Индексация начинается с 0
+    today = datetime.date.today()
 
-    # Получаем все строки со второго листа, пропуская заголовок
-    rows = worksheet2.get_all_values()[1:]  # Пропускаем заголовок
-
-    # Обрабатываем опросы для каждого пользователя
-    for row in rows:
-        subj = row[0].strip()    # ФИО субъекта (кто будет проходить опрос)
-        obj = row[1].strip()     # ФИО объекта (кого оценивают)
-        questionary = row[2].strip()  # Название опроса
-        date_from_sheet = row[4].strip() # Дата для отправки опроса
+    # Проходимся по кешированным назначениям
+    for assignment in cached_assignments:
+        subj = assignment['subj']
+        obj = assignment['obj']
+        questionary = assignment['questionary']
+        date_str = assignment['date']
 
         try:
-            day = datetime.datetime.strptime(date_from_sheet, "%d.%m.%Y").date()
+            day = datetime.datetime.strptime(date_str, "%d.%m.%Y").date()
         except ValueError:
             continue  # Пропускаем этот опрос и переходим к следующему
 
-        # Проверяем, есть ли chat_id для данного ФИО
-        chat_id = fio_chatid_dict.get(subj)
 
-        if day == datetime.date.today():
-            if chat_id:
+        if day == today:
+            # Ищем chat_id для субъекта
+            subj_info = cached_employees.get(subj)
+            if subj_info and subj_info['chat_id']:
                 try:
-                    chat_id = int(chat_id)  # Преобразуем chat_id в целое число
+                    chat_id = int(subj_info['chat_id'])
 
                     # Создаём опрос, если его нет
                     user_data.setdefault(chat_id, {'survey_queue': [], 'current_survey': None})
@@ -255,7 +234,7 @@ def run_survey_dispatch():
                         'questionary': questionary
                     })
 
-                    # Если пользователь не проходит опрос, запускаем следующий
+                    # Если в данный момент опрос не запущен, запускаем сразу
                     if user_data[chat_id]['current_survey'] is None:
                         start_next_survey(chat_id)
 
