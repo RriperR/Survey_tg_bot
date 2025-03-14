@@ -1,4 +1,3 @@
-import time
 import datetime
 import logging
 
@@ -46,10 +45,9 @@ def send_assignment_header(chat_id, object_name, questionnaire_name):
 
 def start_next_survey(chat_id):
     """
-    - Определяем ФИО пользователя.
-    - Ищем первый непройденный опрос в survey_assignments.
-    - Если найден -> отправляем «шапку» (картинка + текст) и сразу вызываем send_next_question(chat_id).
-    - Если нет -> выводим, что опросов нет.
+    Определяем ФИО пользователя (subject_name).
+    Сначала проверяем, нет ли старых (учитывая survey_date < сегодня) незавершённых опросов.
+    Если есть, говорим пользователю, что остался непройденный опрос.
     """
     subject_name = get_subject_name(chat_id)
     if not subject_name:
@@ -58,11 +56,11 @@ def start_next_survey(chat_id):
 
     try:
         with DatabaseManager(DB_HOST, DB_NAME, DB_USER, DB_PASSWORD) as db:
-            # Первый непройденный опрос
             assignment = db.fetch_one("""
-                SELECT id, object, questionnaire
+                SELECT object, questionnaire, survey_date
                 FROM survey_assignments
-                WHERE subject = %s AND completed_at IS NULL
+                WHERE subject = %s
+                  AND completed_at IS NULL
                 ORDER BY id
                 LIMIT 1
             """, (subject_name,))
@@ -71,11 +69,19 @@ def start_next_survey(chat_id):
                 logger.info(f"У пользователя {subject_name} (chat_id={chat_id}) нет непройденных опросов.")
                 return
 
-            assignment_id, object_name, questionnaire_name = assignment
+            object_name, questionnaire_name, survey_date = assignment
+
+            # Преобразуем дату в читаемый формат
+            formatted_date = survey_date.strftime("%d.%m.%Y")  # Например: 14 марта 2025
+
+            if survey_date < datetime.datetime.today().date():
+                bot.send_message(chat_id,
+                                 f"У вас остался непройденный опрос от {formatted_date}. Пожалуйста, ответьте на оставшиеся вопросы!")
+
             # Отправляем «шапку»
             send_assignment_header(chat_id, object_name, questionnaire_name)
 
-            # Сразу отправляем первый вопрос
+            # И сразу отправляем первый вопрос
             send_next_question(chat_id)
 
     except Exception as e:
@@ -347,7 +353,11 @@ def fill_survey_assignments():
 
                 if survey_date == today:
                     # Вставляем запись в таблицу survey_assignments
-                    query = "INSERT INTO survey_assignments (subject, object, questionnaire, survey_date, completed_at) VALUES (%s, %s, %s, %s, NULL)"
+                    query = """
+                            INSERT INTO survey_assignments (subject, object, questionnaire, survey_date, completed_at)
+                            VALUES (%s, %s, %s, %s, NULL)
+                            ON CONFLICT ON CONSTRAINT unique_survey_idx DO NOTHING;
+                        """
                     db.execute(query, (subj_name, obj_name, questionnaire, survey_date))
                     logger.info(f"Добавлено задание: субъект {subj_name}, объект {obj_name}, опросник {questionnaire}")
 
@@ -372,8 +382,12 @@ def fill_survey_questions():
 
                 # Записываем вопросы в таблицу survey_questions
                 for question_text, question_type in questions:
-                    query = "INSERT INTO survey_questions (survey_id, question_text) VALUES (%s, %s)"
-                    db.execute(query,(survey_id, question_text))
+                    query = """
+                               INSERT INTO survey_questions (survey_id, question_text)
+                               VALUES (%s, %s)
+                               ON CONFLICT ON CONSTRAINT unique_survey_question_idx DO NOTHING
+                            """
+                    db.execute(query, (survey_id, question_text))
 
                 logger.info(f"Добавлены вопросы для опроса '{questionnaire_name}' (Survey_id: {survey_id})")
 
