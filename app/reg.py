@@ -40,7 +40,7 @@ def start(message):
 
 
 # Обработчик выбора имени
-@bot.message_handler(func=lambda message: True)
+@bot.message_handler(func=lambda message: message.text in cached_employees.keys())
 def handle_name_selection(message):
     chat_id = message.chat.id
     selected_name = message.text.strip()

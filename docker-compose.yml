@@ -9,7 +9,7 @@ services:
     volumes:
       - ./app/bot.py:/code/app/bot.py
       - ./logs:/code/logs
-
+    restart: always
 
   db:
     env_file:

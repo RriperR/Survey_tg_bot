@@ -17,231 +17,392 @@ handler.setFormatter(formatter)
 
 logger.addHandler(handler)
 
+############################
+# Вспомогательные функции
+############################
 
-# Функции для опросов
+def get_subject_name(chat_id):
+    for name, info in cached_employees.items():
+        if str(info.get('chat_id')) == str(chat_id):
+            return name
+    return None
+
+def send_assignment_header(chat_id, object_name, questionnaire_name):
+    obj_info = cached_employees.get(object_name)
+    message = (
+        f"На этой неделе с вами работал(-а): {object_name}.\n"
+        f"Пожалуйста, пройдите опрос: {questionnaire_name}"
+    )
+    if obj_info and obj_info.get('file_id'):
+        bot.send_photo(chat_id, photo=obj_info['file_id'], caption=message)
+    else:
+        with open("images/unknown.png", 'rb') as image_file:
+            bot.send_photo(chat_id, photo=image_file, caption=message)
+
+
+############################
+# Основная логика опросов
+############################
+
 def start_next_survey(chat_id):
-    data = user_data.get(chat_id)
-    if not data:
-        logger.warning(f"Нет данных для пользователя {chat_id}")
+    """
+    - Определяем ФИО пользователя.
+    - Ищем первый непройденный опрос в survey_assignments.
+    - Если найден -> отправляем «шапку» (картинка + текст) и сразу вызываем send_next_question(chat_id).
+    - Если нет -> выводим, что опросов нет.
+    """
+    subject_name = get_subject_name(chat_id)
+    if not subject_name:
+        logger.warning(f"Не найдено ФИО для chat_id={chat_id}")
         return
 
-    if data['survey_queue']:
-        # Берем следующий опрос из очереди
-        survey_info = data['survey_queue'].pop(0)
-        # Устанавливаем текущий опрос
-        data['current_survey'] = {
-            'subj': survey_info['subj'],
-            'obj': survey_info['obj'],
-            'questionary': survey_info['questionary'],
-            'current_question_index': 0,
-            'questions': [],
-            'answers': []
-        }
+    try:
+        with DatabaseManager(DB_HOST, DB_NAME, DB_USER, DB_PASSWORD) as db:
+            # Первый непройденный опрос
+            assignment = db.fetch_one("""
+                SELECT id, object, questionnaire
+                FROM survey_assignments
+                WHERE subject = %s AND completed_at IS NULL
+                ORDER BY id
+                LIMIT 1
+            """, (subject_name,))
 
-        logger.info(f"Запущен опрос '{survey_info['questionary']}' для {chat_id}")
+            if not assignment:
+                logger.info(f"У пользователя {subject_name} (chat_id={chat_id}) нет непройденных опросов.")
+                return
 
-        # Загружаем вопросы для этого опроса
-        load_questions_for_survey(chat_id)
+            assignment_id, object_name, questionnaire_name = assignment
+            # Отправляем «шапку»
+            send_assignment_header(chat_id, object_name, questionnaire_name)
 
-        # Находим file_id для оцениваемого сотрудника
-        obj_info = cached_employees.get(survey_info['obj'])
-        if obj_info and obj_info['file_id']:
-            file_id = obj_info['file_id']
-            message = (
-                f"На этой неделе с вами работал(-а): {survey_info['obj']}.\n"
-                f"Пожалуйста, пройдите опрос: {survey_info['questionary']}"
-            )
-            bot.send_photo(chat_id, photo=file_id, caption=message)
-        else:
-            # Если file_id не найден, отправляем стандартное изображение
-            send_unknown_image(chat_id, survey_info)
+            # Сразу отправляем первый вопрос
+            send_next_question(chat_id)
 
-        # Небольшая задержка и отправка первого вопроса
-        time.sleep(1)
-        send_next_question(chat_id)
-    else:
-        # Очередь опросов пуста
-        data['current_survey'] = None
-        logger.info(f"Очередь опросов пуста для {chat_id}")
-
-
-
-
-# Функция отправки стандартного изображения при отсутствии file_id
-def send_unknown_image(chat_id, survey_info):
-    with open("images/unknown.png", 'rb') as image_file:
-        message = f"На этой неделе с вами работал(-а): {survey_info['obj']}. Пожалуйста, пройдите опрос: {survey_info['questionary']}"
-        bot.send_photo(chat_id, photo=image_file, caption=message)
-
-
-
-def load_questions_for_survey(chat_id):
-    data = user_data.get(chat_id)
-    if not data or not data['current_survey']:
-        logger.warning(f"Нет активного опроса для {chat_id} (load_questions_for_survey)")
-        return
-
-    questionary = data['current_survey']['questionary']
-    questions = cached_questionnaires.get(questionary, [])
-
-    if questions:
-        data['current_survey']['questions'] = questions
-        logger.info(f"Опрос {questionary} для {chat_id} найден в кешированных данных.")
-    else:
-        logger.warning(f"Опрос {questionary} не найден в локальном кеше.")
-
+    except Exception as e:
+        logger.error(f"Ошибка в start_next_survey для chat_id={chat_id}: {e}")
 
 
 def send_next_question(chat_id):
-    data = user_data.get(chat_id)
-    if not data or not data['current_survey']:
-        logger.warning(f"Нет активного опроса для {chat_id} (send_next_question)")
+    """
+    1. По chat_id получаем ФИО субъекта.
+    2. Ищем первый непройденный опрос.
+    3. В этом опросе (survey_assignments) находим первый вопрос (survey_questions) с user_response IS NULL.
+    4. Если нет вопросов -> finalize_questionnaire(chat_id).
+    5. Иначе отправляем вопрос (с кнопками или текстом).
+    """
+    subject_name = get_subject_name(chat_id)
+    if not subject_name:
+        logger.warning(f"send_next_question: Не найдено ФИО для chat_id={chat_id}")
         return
 
-    survey = data['current_survey']
-    index = survey['current_question_index']
-    if index < len(survey['questions']):
-        question, q_type = survey['questions'][index]
-        if q_type == 'int':
-            # Создаем клавиатуру для оценки
-            markup = types.InlineKeyboardMarkup()
-            markup.row(
-                types.InlineKeyboardButton(text="1", callback_data="rate_1"),
-                types.InlineKeyboardButton(text="2", callback_data="rate_2"),
-                types.InlineKeyboardButton(text="3", callback_data="rate_3"),
-                types.InlineKeyboardButton(text="4", callback_data="rate_4"),
-                types.InlineKeyboardButton(text="5", callback_data="rate_5")
-            )
-            bot.send_message(chat_id, question, reply_markup=markup)
-            time.sleep(1)
-        elif q_type == 'str':
-            msg = bot.send_message(chat_id, question)
-            bot.register_next_step_handler(msg, handle_text_response)
-    else:
-        # Вопросы закончились, завершаем опрос
-        finalize_questionnaire(chat_id)
+    try:
+        with DatabaseManager(DB_HOST, DB_NAME, DB_USER, DB_PASSWORD) as db:
+            # Ищем первый непройденный опрос
+            assignment = db.fetch_one("""
+                SELECT id, object, questionnaire
+                FROM survey_assignments
+                WHERE subject = %s AND completed_at IS NULL
+                ORDER BY id
+                LIMIT 1
+            """, (subject_name,))
+
+            if not assignment:
+                # Нет опроса — всё уже пройдено
+                logger.info(f"У пользователя {subject_name} (chat_id={chat_id}) нет непройденных опросов.")
+                return
+
+            assignment_id, object_name, questionnaire_name = assignment
+
+            # Ищем первый неотвеченный вопрос
+            question_row = db.fetch_one("""
+                SELECT id, question_text
+                FROM survey_questions
+                WHERE survey_id = %s AND user_response IS NULL
+                ORDER BY id
+                LIMIT 1
+            """, (assignment_id,))
+
+            if not question_row:
+                # Все вопросы в этом опросе уже отвечены -> завершаем
+                finalize_questionnaire(chat_id)
+                return
+
+            question_id, question_text = question_row
+
+            # Проверяем, это вопрос с текстовым ответом или рейтинговым
+            if "Что бы вы порекомендовали" in question_text:
+                msg = bot.send_message(chat_id, question_text)
+                # Регистрируем обработчик текстового ответа
+                bot.register_next_step_handler(msg, handle_text_response)
+            else:
+                # Отправляем вопрос + inline-кнопки
+                markup = types.InlineKeyboardMarkup()
+                markup.row(
+                    types.InlineKeyboardButton(text="1", callback_data="rate_1"),
+                    types.InlineKeyboardButton(text="2", callback_data="rate_2"),
+                    types.InlineKeyboardButton(text="3", callback_data="rate_3"),
+                    types.InlineKeyboardButton(text="4", callback_data="rate_4"),
+                    types.InlineKeyboardButton(text="5", callback_data="rate_5")
+                )
+                bot.send_message(chat_id, question_text, reply_markup=markup)
+
+    except Exception as e:
+        logger.error(f"Ошибка в send_next_question для chat_id={chat_id}: {e}")
 
 
-
-# Обработчик текстовых ответов
 def handle_text_response(message):
+    """
+    Обработчик текстового ответа:
+    1. Находим первый непройденный опрос и первый вопрос (user_response IS NULL).
+    2. Обновляем user_response данным текстом.
+    3. Вызываем send_next_question(chat_id).
+    """
     chat_id = message.chat.id
-    data = user_data.get(chat_id)
-    if not data or not data['current_survey']:
-        logger.warning(f"Получена оценка '{message.text}', но нет активного опроса для {chat_id}")
+    text = message.text.strip()
+
+    subject_name = get_subject_name(chat_id)
+    if not subject_name:
+        logger.warning(f"handle_text_response: Не найдено ФИО для chat_id={chat_id}")
         return
 
-    survey = data['current_survey']
-    index = survey['current_question_index']
-    survey['answers'].append((survey['questions'][index][0], message.text))
-    survey['current_question_index'] += 1
-    finalize_questionnaire(chat_id)
+    try:
+        with DatabaseManager(DB_HOST, DB_NAME, DB_USER, DB_PASSWORD) as db:
+            # 1) находим первый непройденный опрос
+            assignment = db.fetch_one("""
+                SELECT id
+                FROM survey_assignments
+                WHERE subject = %s AND completed_at IS NULL
+                ORDER BY id
+                LIMIT 1
+            """, (subject_name,))
+            if not assignment:
+                logger.info(f"handle_text_response: нет непройденных опросов у {subject_name}")
+                bot.send_message(chat_id, "Все опросы пройдены.")
+                return
+            assignment_id = assignment[0]
+
+            # 2) находим первый вопрос без ответа
+            question_row = db.fetch_one("""
+                SELECT id
+                FROM survey_questions
+                WHERE survey_id = %s AND user_response IS NULL
+                ORDER BY id
+                LIMIT 1
+            """, (assignment_id,))
+            if not question_row:
+                # вопросов нет, завершаем
+                finalize_questionnaire(chat_id)
+                return
+            question_id = question_row[0]
+
+            # 3) обновляем ответ
+            db.execute(
+                "UPDATE survey_questions SET user_response = %s WHERE id = %s",
+                (text, question_id)
+            )
+
+        # Переходим к следующему вопросу
+        send_next_question(chat_id)
+
+    except Exception as e:
+        logger.error(f"Ошибка в handle_text_response для chat_id={chat_id}: {e}")
 
 
-
-# Обработчик оценок
 @bot.callback_query_handler(func=lambda call: call.data.startswith("rate_"))
 def handle_rating_callback(call):
+    """
+    Аналогично handle_text_response, но для inline-кнопок:
+    1) Определяем rating из call.data
+    2) Смотрим, какой первый вопрос без ответа
+    3) Обновляем user_response
+    4) send_next_question(chat_id)
+    """
     try:
-        rating = call.data.split("_")[1]
+        rating = call.data.split("_")[1]  # "rate_5" -> "5"
         chat_id = call.message.chat.id
-        data = user_data.get(chat_id)
-        if not data or not data['current_survey']:
-            logger.warning(f"Получена оценка {rating}, но нет активного опроса для {chat_id}")
+
+        subject_name = get_subject_name(chat_id)
+        if not subject_name:
+            logger.warning(f"handle_rating_callback: Не найдено ФИО для chat_id={chat_id}")
             return
 
-        survey = data['current_survey']
-        index = survey['current_question_index']
-        survey['answers'].append((survey['questions'][index][0], rating))
-        survey['current_question_index'] += 1
-        # Отвечаем на колбэк, чтобы убрать "часики"
+        with DatabaseManager(DB_HOST, DB_NAME, DB_USER, DB_PASSWORD) as db:
+            # 1) Берём первый непройденный опрос
+            assignment = db.fetch_one("""
+                SELECT id
+                FROM survey_assignments
+                WHERE subject = %s AND completed_at IS NULL
+                ORDER BY id
+                LIMIT 1
+            """, (subject_name,))
+
+            if not assignment:
+                logger.info(f"handle_rating_callback: нет непройденных опросов у {subject_name}")
+                bot.send_message(chat_id, "Все опросы пройдены. Не тыкайте по кнопкам лишний раз!!!")
+                return
+
+            assignment_id = assignment[0]
+
+            # 2) Берём первый неотвеченный вопрос
+            question_row = db.fetch_one("""
+                SELECT id
+                FROM survey_questions
+                WHERE survey_id = %s AND user_response IS NULL
+                ORDER BY id
+                LIMIT 1
+            """, (assignment_id,))
+            if not question_row:
+                # Нет вопросов -> завершаем
+                finalize_questionnaire(chat_id)
+                return
+            question_id = question_row[0]
+
+            # 3) Обновляем ответ
+            db.execute(
+                "UPDATE survey_questions SET user_response = %s WHERE id = %s",
+                (rating, question_id)
+            )
+
+        # Отвечаем на callback (убрать «часики»)
         bot.answer_callback_query(call.id)
+
+        # 4) Отправляем следующий вопрос
         send_next_question(chat_id)
+
     except Exception as e:
         logger.error(f"Ошибка при обработке рейтинга: {e}")
 
 
-
-# Функция для завершения опроса
 def finalize_questionnaire(chat_id):
-    data = user_data.get(chat_id)
-    if not data or not data['current_survey']:
-        logger.warning(f"Попытка завершить опрос, но нет активного опроса для {chat_id}")
+    """
+    1. Ставим дату в completed_at, если действительно все вопросы отвечены (проверим).
+    2. Говорим «Спасибо».
+    3. При желании вызываем start_next_survey(chat_id) для следующего опроса.
+    """
+    subject_name = get_subject_name(chat_id)
+    if not subject_name:
+        logger.warning(f"finalize_questionnaire: Не найдено ФИО для chat_id={chat_id}")
         return
-
-    survey = data['current_survey']
-
-    row_data = [survey['subj'], survey['obj'], survey['questionary'], str(datetime.datetime.now())]
-    for question, answer in survey['answers']:
-        row_data.extend([question, answer])
-
-    # worksheet4 = spreadsheet.get_worksheet(3)
-    # worksheet4.append_row(row_data[1::])
-
-    second_worksheet.append_row(row_data)
-
-    bot.send_message(chat_id, "Спасибо за обратную связь!")
-
-    while len(row_data) < 14:
-        row_data.append(None)
 
     try:
         with DatabaseManager(DB_HOST, DB_NAME, DB_USER, DB_PASSWORD) as db:
-            db.insert_survey_response(row_data)
-    except Exception as ex:
-        bot.send_message(chat_id, f"Не удалось сохранить ответы в базу данных")
-        logger.error(f"Не удалось сохранить ответы в базу данных: {ex}")
+            # 1) Определяем первый непройденный опрос
+            assignment = db.fetch_one("""
+                SELECT id, questionnaire
+                FROM survey_assignments
+                WHERE subject = %s AND completed_at IS NULL
+                ORDER BY id
+                LIMIT 1
+            """, (subject_name,))
+            if not assignment:
+                # Нет непройденных опросов, ничего завершать
+                return
+            assignment_id, questionnaire_name = assignment
 
-    data['current_survey'] = None
-    start_next_survey(chat_id)
+            # 2) Проверяем, остались ли ещё вопросы без ответа
+            unanswered = db.fetch_one("""
+                SELECT id
+                FROM survey_questions
+                WHERE survey_id = %s AND user_response IS NULL
+                LIMIT 1
+            """, (assignment_id,))
+            if unanswered:
+                # Значит, есть вопросы без ответа — нельзя завершать
+                return
+
+            # 3) Все вопросы отвечены -> ставим дату
+            db.execute("""
+                UPDATE survey_assignments
+                SET completed_at = NOW()
+                WHERE id = %s
+            """, (assignment_id,))
+
+        # 4) Сообщаем пользователю
+        bot.send_message(chat_id, f"Спасибо за обратную связь! Опрос '{questionnaire_name}' завершён.")
+
+        # 5) Если хотим сразу запускать следующий опрос
+        start_next_survey(chat_id)
+
+    except Exception as e:
+        logger.error(f"Ошибка в finalize_questionnaire: {e}")
 
 
-
-# Функция для запуска опросов
-def run_survey_dispatch():
-    global user_data
-    logger.info("Запуск процесса назначения опросов")
-
+def fill_survey_assignments():
+    logger.info("Начало заполнения таблицы survey_assignments")
     today = datetime.date.today()
 
-    # Проходимся по кешированным назначениям
-    for assignment in cached_assignments:
-        subj = assignment['subj']
-        obj = assignment['obj']
-        questionary = assignment['questionary']
-        date_str = assignment['date']
+    try:
+        with DatabaseManager(DB_HOST, DB_NAME, DB_USER, DB_PASSWORD) as db:
+            for assignment in cached_assignments:
+                subj_name = assignment.get('subj')
+                obj_name = assignment.get('obj')
+                questionnaire = assignment.get('questionary')
+                date_str = assignment.get('date')
 
-        try:
-            day = datetime.datetime.strptime(date_str, "%d.%m.%Y").date()
-        except ValueError:
-            continue  # Пропускаем этот опрос и переходим к следующему
-
-
-        if day == today:
-            # Ищем chat_id для субъекта
-            subj_info = cached_employees.get(subj)
-            if subj_info and subj_info['chat_id']:
                 try:
-                    chat_id = int(subj_info['chat_id'])
+                    survey_date = datetime.datetime.strptime(date_str, "%d.%m.%Y").date()
+                except ValueError:
+                    logger.warning(f"Некорректный формат даты: {date_str} для задания {assignment}")
+                    continue
 
-                    # Создаём опрос, если его нет
-                    user_data.setdefault(chat_id, {'survey_queue': [], 'current_survey': None})
+                if survey_date == today:
+                    # Вставляем запись в таблицу survey_assignments
+                    query = "INSERT INTO survey_assignments (subject, object, questionnaire, survey_date, completed_at) VALUES (%s, %s, %s, %s, NULL)"
+                    db.execute(query, (subj_name, obj_name, questionnaire, survey_date))
+                    logger.info(f"Добавлено задание: субъект {subj_name}, объект {obj_name}, опросник {questionnaire}")
 
-                    # Добавляем опрос в очередь пользователя
-                    user_data[chat_id]['survey_queue'].append({
-                        'subj': subj,
-                        'obj': obj,
-                        'questionary': questionary
-                    })
+    except Exception as e:
+        logger.error(f"Ошибка при заполнении таблицы survey_assignments: {e}")
 
-                    # Если в данный момент опрос не запущен, запускаем сразу
-                    if user_data[chat_id]['current_survey'] is None:
-                        start_next_survey(chat_id)
 
-                    logger.info(f"Опрос '{questionary}' добавлен в очередь для {subj} (chat_id: {chat_id})")
-                except Exception as e:
-                    logger.error(f"Не удалось добавить опрос для {subj}. Ошибка: {e}")
-            else:
-                logger.warning(f"Чат ID для {subj} не найден")
-        else:
-            logger.info(f"Дата проведения опроса для {subj} не совпадает с сегодняшней: {day}")
+def fill_survey_questions():
+    logger.info("Начало заполнения таблицы survey_questions")
+
+    try:
+        with DatabaseManager(DB_HOST, DB_NAME, DB_USER, DB_PASSWORD) as db:
+            # Получаем все активные опросы
+            active_surveys = db.fetch_all("SELECT id, questionnaire FROM survey_assignments WHERE completed_at IS NULL")
+
+            for survey_id, questionnaire_name in active_surveys:
+                # Проверяем, есть ли опросник в кеше
+                questions = cached_questionnaires.get(questionnaire_name)
+                if not questions:
+                    logger.warning(f"Опросник '{questionnaire_name}' не найден в кеше")
+                    continue
+
+                # Записываем вопросы в таблицу survey_questions
+                for question_text, question_type in questions:
+                    query = "INSERT INTO survey_questions (survey_id, question_text) VALUES (%s, %s)"
+                    db.execute(query,(survey_id, question_text))
+
+                logger.info(f"Добавлены вопросы для опроса '{questionnaire_name}' (Survey_id: {survey_id})")
+
+    except Exception as e:
+        logger.error(f"Ошибка при заполнении таблицы survey_questions: {e}")
+
+
+def run_survey_dispatch():
+    logger.info("Запуск процесса назначения опросов")
+
+    # Сначала заполняем таблицы, если нужно
+    fill_survey_assignments()
+    fill_survey_questions()
+
+    # Проходим по всем сотрудникам
+    for fio, info in cached_employees.items():
+        chat_id = info.get('chat_id')
+        if not chat_id:
+            continue
+        # Пробуем запустить опрос (если есть непройденные)
+        start_next_survey(chat_id)
+
+
+
+@bot.message_handler(commands=['process'])
+def process(message):
+    bot.send_message(message.chat.id, "Процесс пошёл")
+    run_survey_dispatch()
+
+@bot.message_handler(commands=['update'])
+def update(message):
+    update_local_cache()

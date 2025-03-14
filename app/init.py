@@ -35,11 +35,6 @@ apihelper.RETRY_ON_ERROR = True
 cached_employees = {}        # { 'ФИО': {'file_id': '...', 'chat_id': '...', 'spec': '...'} }
 cached_assignments = []      # [{'subj': '...', 'obj': '...', 'questionary': '...', 'date': '...'}, ...]
 cached_questionnaires = {}   # {'Название опросника': [(вопрос1, тип1), (вопрос2, тип2), ...]}
-user_data = {}               # Состояния пользователей (очередь опросов, текущие опросы)
-
-# Получаем данные из первой таблицы
-names = worksheet.col_values(1)[1:]     # ФИО из первого столбца, пропускаем заголовок
-chat_ids = worksheet.col_values(3)[1:]  # chat_id из третьего столбца, пропускаем заголовок
 
 
 def update_local_cache():
