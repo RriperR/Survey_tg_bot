@@ -1,26 +1,46 @@
 import os
-
-from apscheduler.schedulers.background import BackgroundScheduler
 from dotenv import load_dotenv
+import asyncio
+import logging
 
-from reg import start, handle_name_selection, handle_confirmation, handle_photo
-from survey import *
-from report import send_monthly_report
+from aiogram import Bot, Dispatcher
 
-# Сразу при старте один раз загрузим данные.
-update_local_cache()
+from middlewares.logger import GroupLoggerMiddleware
+from handlers import router
+from database.models import async_main
 
-# Настройка планировщика
-scheduler = BackgroundScheduler()
+load_dotenv()
 
-# Функции для запуска планировщика
-scheduler.add_job(update_local_cache, 'cron', hour=19, minute=50)
+bot = Bot(token=os.getenv("BOT_TOKEN"))
+dp = Dispatcher()
 
-scheduler.add_job(run_survey_dispatch, 'cron', hour=20, minute=30)
 
-scheduler.add_job(send_monthly_report, 'cron', day=4, hour=20, minute=52)
+async def main():
+    await async_main()
+    dp.include_router(router)
+    dp.message.middleware(GroupLoggerMiddleware())
+    await dp.start_polling(bot)
 
-scheduler.start()
 
-# Запуск бота
-bot.polling(none_stop=True)
+if __name__ == '__main__':
+    logging.basicConfig(level=logging.INFO)
+    try:
+        asyncio.run(main())
+    except KeyboardInterrupt:
+        print("Shutdown")
+
+
+# from apscheduler.schedulers.background import BackgroundScheduler
+#
+# # Настройка планировщика
+# scheduler = BackgroundScheduler()
+#
+# # Функции для запуска планировщика
+# scheduler.add_job(update_local_cache, 'cron', hour=19, minute=50)
+#
+# scheduler.add_job(run_survey_dispatch, 'cron', hour=20, minute=30)
+#
+# scheduler.add_job(send_monthly_report, 'cron', day=4, hour=20, minute=52)
+#
+# scheduler.start()
+
