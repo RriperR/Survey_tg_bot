@@ -1,17 +1,13 @@
 from aiogram import F, Router
 from aiogram.filters import CommandStart, Command
-from aiogram.fsm.context import FSMContext
 from aiogram.types import Message, CallbackQuery
-from aiogram.fsm.state import State, StatesGroup
 
 from utils import update_data_from_sheets
 import database.requests as rq
 import keyboards as kb
 
-router = Router()
 
-class SearchState(StatesGroup):
-    page = State()
+router = Router()
 
 
 @router.message(CommandStart())
