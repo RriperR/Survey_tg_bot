@@ -56,7 +56,7 @@ async def ask_next_question(bot, user_id: int, survey: Survey, pair: Pair, quest
 
 
 # Обработчик для рейтинговых вопросов (inline)
-@router.callback_query(F.data.startswith("rate:"))
+@router.callback_query(StateFilter(SurveyState), F.data.startswith("rate:"))
 async def handle_rate(callback: CallbackQuery, state: FSMContext):
     rate = callback.data.split(":",1)[1]
     data = await state.get_data()
@@ -79,13 +79,7 @@ async def handle_rate(callback: CallbackQuery, state: FSMContext):
 
 
 # Обработчик для текстовых вопросов
-@router.message(StateFilter(
-    SurveyState.q1,
-    SurveyState.q2,
-    SurveyState.q3,
-    SurveyState.q4,
-    SurveyState.q5
-))
+@router.message(StateFilter(SurveyState))
 async def handle_text_answer(message: Message, state: FSMContext):
     try:
         data = await state.get_data()
@@ -129,5 +123,20 @@ async def handle_text_answer(message: Message, state: FSMContext):
             answer5=answers["q5"],
         )
         await rq.save_answer(ans)
-        await message.answer("Спасибо, опрос завершён!")
+
+        # сохранён ответ ...
+        await rq.update_pair_status(pair.id, "done")  # 1. отмечаем завершение
+
         await state.clear()
+
+        # 2. проверяем, есть ли ещё ready‑опросы для этого же subject
+        next_pair = await rq.get_next_ready_pair(pair.subject)
+        if next_pair:
+            from services.survey_scheduler import send_surveys
+            from bot import dp
+
+            await rq.update_pair_status(next_pair.id, "in_progress")
+            await send_surveys(message.bot, dp)
+        else:
+            await message.answer("Спасибо, опросы на сегодня закончились!")
+
