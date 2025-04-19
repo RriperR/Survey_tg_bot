@@ -43,6 +43,7 @@ class Pair(Base):
     survey = Column(Text)
     weekday = Column(String(31))
     date = Column(String(31))
+    status = Column(String(15), default="ready")
 
 
 class Survey(Base):

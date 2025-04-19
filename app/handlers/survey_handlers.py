@@ -29,6 +29,7 @@ async def ask_next_question(bot, user_id: int, survey: Survey, pair: Pair, quest
     Запускает FSM-состояние для question_index (1..5),
     отправляет вопрос и сохраняет в state данные.
     """
+    print(state.get_data())
     # заполняем общие данные при первом вопросе
     if question_index == 1:
         await state.update_data(
@@ -129,5 +130,20 @@ async def handle_text_answer(message: Message, state: FSMContext):
             answer5=answers["q5"],
         )
         await rq.save_answer(ans)
-        await message.answer("Спасибо, опрос завершён!")
+
+        # сохранён ответ ...
+        await rq.update_pair_status(pair.id, "done")  # 1. отмечаем завершение
+
         await state.clear()
+
+        # 2. проверяем, есть ли ещё ready‑опросы для этого же subject
+        next_pair = await rq.get_next_ready_pair(pair.subject)
+        if next_pair:
+            from services.survey_scheduler import start_pair_survey
+            from bot import dp
+
+            await rq.update_pair_status(next_pair.id, "in_progress")
+            await start_pair_survey(message.bot, dp, message.from_user.id, next_pair)
+        else:
+            await message.answer("Спасибо, опросы на сегодня закончились!")
+

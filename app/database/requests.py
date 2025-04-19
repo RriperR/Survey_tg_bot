@@ -50,22 +50,67 @@ async def set_chat_id(worker_id: int, chat_id: str) -> bool:
         return True
 
 
-async def get_pairs_by_date(date: str) -> list[Pair]:
-    """
-    Вернёт все Pair, у которых поле date == date (формат 'dd.MM.YYYY').
-    """
-    async with async_session() as session:
-        stmt = select(Pair).where(Pair.date == date)
-        result = await session.execute(stmt)
-        return result.scalars().all()
-
-
 async def get_survey_by_name(survey_name: str):
     """
     Найдёт объект Survey по его имени (survey_name).
     """
     async with async_session() as session:
         stmt = select(Survey).where(Survey.speciality == survey_name)
+        result = await session.execute(stmt)
+        return result.scalar_one_or_none()
+
+
+async def get_ready_pairs_by_date(date: str) -> list[Pair]:
+    async with async_session() as session:
+        stmt = (
+            select(Pair)
+            .where(Pair.status == "ready", Pair.date <= date)
+            .order_by(Pair.id)
+        )
+        result = await session.execute(stmt)
+        return result.scalars().all()
+
+
+async def update_pair_status(pair_id: int, status: str) -> None:
+    """
+    Устанавливает новое значение поля Pair.status.
+    """
+    async with async_session() as session:
+        stmt = (
+            update(Pair)
+            .where(Pair.id == pair_id)
+            .values(status=status)
+        )
+        await session.execute(stmt)
+        await session.commit()
+
+
+async def reset_incomplete_surveys() -> None:
+    """
+    Все пары со статусом 'in_progress' → 'ready'
+    """
+    async with async_session() as session:
+        stmt = (
+            update(Pair)
+            .where(Pair.status == "in_progress")
+            .values(status="ready")
+        )
+        await session.execute(stmt)
+        await session.commit()
+
+
+async def get_next_ready_pair(subject: str):
+    """
+    Первый Pair со status='ready' для данного сотрудника (subject),
+    упорядочен по id — чтобы сохранять тот же порядок, что и в send_surveys().
+    """
+    async with async_session() as session:
+        stmt = (
+            select(Pair)
+            .where(Pair.subject == subject, Pair.status == "ready")
+            .order_by(Pair.id)
+            .limit(1)
+        )
         result = await session.execute(stmt)
         return result.scalar_one_or_none()
 
