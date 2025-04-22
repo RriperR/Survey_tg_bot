@@ -1,109 +1,113 @@
 from datetime import datetime
 
-from aiogram import Router, F
+from aiogram import Router, F, Bot, Dispatcher
 from aiogram.types import CallbackQuery, Message
 from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import State, StatesGroup
 from aiogram.filters import StateFilter
 
 import database.requests as rq
-from database.models import Answer, Survey, Pair
+from database.models import Answer, Pair
 
 from keyboards import build_int_keyboard
-
 
 router = Router()
 
 class SurveyState(StatesGroup):
-    survey = State()
-    pair   = State()
-    q1 = State()
-    q2 = State()
-    q3 = State()
-    q4 = State()
-    q5 = State()
+    answers = State()
 
 
-async def ask_next_question(bot, user_id: int, survey: Survey, pair: Pair, question_index: int, state: FSMContext):
-    """
-    Запускает FSM-состояние для question_index (1..5),
-    отправляет вопрос и сохраняет в state данные.
-    """
-    # заполняем общие данные при первом вопросе
-    if question_index == 1:
-        await state.update_data(
-            survey=survey,
-            pair=pair,
+async def start_pair_survey(bot: Bot, chat_id: int, pair: Pair, state: FSMContext = None, dp: Dispatcher = None):
+    # 1. вступление
+    await bot.send_message(
+        chat_id,
+        text=(
+            f"{pair.date} с вами работал(-а): {pair.object}.\n"
+            f"Пожалуйста, пройдите опрос: {pair.survey}"
         )
+    )
 
+    # 2. FSM
+    if state is None:
+        state = dp.fsm.get_context(bot, chat_id, chat_id)
+
+    survey = await rq.get_survey_by_name(pair.survey)
+
+    await state.update_data(survey=survey, pair=pair, answers=[])
+
+
+    print(f"current state: {await state.get_state()}. data: {await state.get_data()}")
+
+    await ask_next_question(
+        bot=bot,
+        user_id=chat_id,
+        question_index=1,
+        state=state,
+    )
+
+
+async def ask_next_question(bot, user_id: int, question_index: int, state: FSMContext):
     # готовим текст и тип
+    data = await state.get_data()
+    survey = data.get("survey")
+
     q_text = getattr(survey, f"question{question_index}")
     q_type = getattr(survey, f"question{question_index}_type")
 
-    # меняем state на следующее
-    next_state = getattr(SurveyState, f"q{question_index}")
-    await state.set_state(next_state)
+    print(await state.get_state())
 
     # отправляем вопрос
     if q_type == "int":
         # inline‑кнопки 1–5
-        await bot.send_message(chat_id=user_id, text=q_text, reply_markup=await build_int_keyboard())
+        await bot.send_message(chat_id=user_id, text=q_text, reply_markup=await build_int_keyboard(question_index))
     else:
         # ждём текст
+        await state.set_state(SurveyState.answers)
         await bot.send_message(chat_id=user_id, text=q_text)
 
 
-
-
 # Обработчик для рейтинговых вопросов (inline)
-@router.callback_query(StateFilter(SurveyState), F.data.startswith("rate:"))
+@router.callback_query(F.data.startswith("rate:"))
 async def handle_rate(callback: CallbackQuery, state: FSMContext):
-    rate = callback.data.split(":",1)[1]
-    data = await state.get_data()
-    # определяем, в каком состоянии мы были
-    current = await state.get_state()  # например 'SurveyState:q2'
-    idx = int(current.split(":")[-1][1])  # из 'q2' -> 2
+    _, question_index, rate = callback.data.split(":")
 
     # сохраняем ответ
-    await state.update_data({f"q{idx}": rate})
+    data = await state.get_data()
+    answers: list = data.get("answers")
+    answers.append(rate)
+
+    await state.update_data(answers=answers)
+
 
     # отправим подтверждение (чтобы inline‑кнопка не крутилась)
     await callback.answer(f"Вы выбрали: {rate}")
 
     # переходим к следующему вопросу
     await ask_next_question(bot=callback.bot, user_id=callback.from_user.id,
-                            survey=data["survey"],
-                            pair=data["pair"],
-                            question_index=idx+1,
+                            question_index=int(question_index)+1,
                             state=state)
 
 
 # Обработчик для текстовых вопросов
-@router.message(StateFilter(SurveyState))
+@router.message(StateFilter(SurveyState.answers))
 async def handle_text_answer(message: Message, state: FSMContext):
-    try:
-        data = await state.get_data()
-        current = await state.get_state()  # 'SurveyState:qX'
-        idx = int(current.split(":")[-1][1])
+    data = await state.get_data()
+    answers: list = data.get("answers")
+    answers.append(message.text)
+    await state.update_data(answers=answers)
 
-        # сохраняем текстовый ответ
-        await state.update_data({f"q{idx}": message.text})
+    idx = len(answers)
 
-    except Exception as e:
-        await message.answer(f"❗ Ошибка: {e}")
-        raise
 
     # следующий вопрос или завершение
     if idx < 5:
-        survey = data["survey"]
-        pair = data["pair"]
         await ask_next_question(bot=message.bot, user_id=message.from_user.id,
-                                survey=survey, pair=pair,
                                 question_index=idx+1, state=state)
+
     else:
-        answers = await state.get_data()
-        survey = answers["survey"]
-        pair = answers["pair"]
+        a1, a2, a3, a4, a5 = data.get("answers")
+        pair = data.get("pair")
+        survey = data.get("survey")
 
         ans = Answer(
             subject=pair.subject,
@@ -112,15 +116,15 @@ async def handle_text_answer(message: Message, state: FSMContext):
             survey_date=pair.date,
             completed_at=str(datetime.now()),
             question1=survey.question1,
-            answer1=answers["q1"],
+            answer1=a1,
             question2=survey.question2,
-            answer2=answers["q2"],
+            answer2=a2,
             question3=survey.question3,
-            answer3=answers["q3"],
+            answer3=a3,
             question4=survey.question4,
-            answer4=answers["q4"],
+            answer4=a4,
             question5=survey.question5,
-            answer5=answers["q5"],
+            answer5=a5,
         )
         await rq.save_answer(ans)
 
@@ -129,14 +133,14 @@ async def handle_text_answer(message: Message, state: FSMContext):
 
         await state.clear()
 
+        print(await state.get_state())
+        print(await state.get_data())
+
         # 2. проверяем, есть ли ещё ready‑опросы для этого же subject
         next_pair = await rq.get_next_ready_pair(pair.subject)
         if next_pair:
-            from services.survey_scheduler import send_surveys
-            from bot import dp
-
             await rq.update_pair_status(next_pair.id, "in_progress")
-            await send_surveys(message.bot, dp)
+            await start_pair_survey(message.bot, message.from_user.id, next_pair, state = state)
         else:
             await message.answer("Спасибо, опросы на сегодня закончились!")
 

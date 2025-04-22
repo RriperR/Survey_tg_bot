@@ -7,7 +7,7 @@ services:
     depends_on:
       - db
     volumes:
-      - ./app/bot.py:/code/app/bot.py
+      - ./app/:/code/app/
       - ./logs:/code/logs
 
   db:

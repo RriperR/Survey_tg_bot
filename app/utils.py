@@ -66,7 +66,7 @@ async def update_pairs_from_sheet():
         print("✅ Данные о парах успешно загружены в базу данных.")
 
 
-async def update_pairs_from_sheet():
+async def update_surveys_from_sheet():
     async with async_session() as session:
         #create_postgres_dump()
         #print("дамп бд перед очисткой")

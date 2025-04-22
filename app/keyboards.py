@@ -41,13 +41,13 @@ async def build_confirm_keyboard(worker_id: int) -> InlineKeyboardMarkup:
     ])
 
 
-async def build_int_keyboard() -> InlineKeyboardMarkup:
+async def build_int_keyboard(question_index) -> InlineKeyboardMarkup:
     builder = InlineKeyboardBuilder()
 
     for i in range(1,6):
         builder.button(
             text=str(i),
-            callback_data=f"rate:{i}"
+            callback_data=f"rate:{question_index}:{i}"
         )
     builder.adjust(5)
     return builder.as_markup()
