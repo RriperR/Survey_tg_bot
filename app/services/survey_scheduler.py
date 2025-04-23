@@ -10,6 +10,7 @@ from handlers.survey_handlers import start_pair_survey
 
 
 async def send_surveys(bot: Bot, dp: Dispatcher):
+    print("sending surveys")
     await rq.reset_incomplete_surveys()
 
     today = datetime.now().strftime('%d.%m.%Y')
@@ -34,5 +35,7 @@ async def send_surveys(bot: Bot, dp: Dispatcher):
         # Помечаем «в работе»
         await rq.update_pair_status(first_pair.id, "in_progress")
 
-        await start_pair_survey(bot, int(worker.chat_id), first_pair, dp=dp)
+        file_id = await rq.get_file_id_by_name(first_pair.object)
+
+        await start_pair_survey(bot, int(worker.chat_id), first_pair, dp=dp, file_id=file_id)
 

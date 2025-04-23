@@ -1,11 +1,20 @@
 from sqlalchemy import select, update
+from typing import Optional
+
 from database.models import async_session
 from database.models import Worker, Pair, Survey, Answer
 
 
-async def get_worker_by_fullname(full_name: str):
+async def get_worker_by_fullname(full_name: str) -> Optional[Worker]:
     async with async_session() as session:
         stmt = select(Worker).where(Worker.full_name == full_name)
+        result = await session.execute(stmt)
+        return result.scalar_one_or_none()
+
+
+async def get_worker_by_chat_id(chat_id: int) -> Optional[Worker]:
+    async with async_session() as session:
+        stmt = select(Worker).where(Worker.chat_id == str(chat_id))
         result = await session.execute(stmt)
         return result.scalar_one_or_none()
 
@@ -18,7 +27,6 @@ async def get_worker_by_id(worker_id: int) -> Worker:
 
 
 async def get_unregistered_workers() -> list[Worker]:
-    print("starting get_unregistered_workers()")
     async with async_session() as session:
         stmt = select(Worker).where(
             (Worker.chat_id.is_(None)) | (Worker.chat_id == '')
@@ -26,7 +34,6 @@ async def get_unregistered_workers() -> list[Worker]:
         result = await session.execute(stmt)
         workers = result.scalars().all()
         return workers
-    print("success get_unregistered_workers()")
 
 
 async def set_chat_id(worker_id: int, chat_id: str) -> bool:
@@ -35,7 +42,7 @@ async def set_chat_id(worker_id: int, chat_id: str) -> bool:
         existing_stmt = select(Worker).where(Worker.chat_id == chat_id)
         result = await session.execute(existing_stmt)
         existing = result.scalar_one_or_none()
-        print(f"существующий работник:{existing}")
+
         if existing:
             return False  # Уже зарегистрирован
 
@@ -50,7 +57,18 @@ async def set_chat_id(worker_id: int, chat_id: str) -> bool:
         return True
 
 
-async def get_survey_by_name(survey_name: str):
+async def set_worker_file_id(worker_id: int, file_id: str) -> None:
+    async with async_session() as session:
+        stmt = select(Worker).where(Worker.id == worker_id)
+        result = await session.execute(stmt)
+        worker = result.scalar_one_or_none()
+
+        if worker:
+            worker.file_id = file_id
+            await session.commit()
+
+
+async def get_survey_by_name(survey_name: str) -> Optional[Survey]:
     """
     Найдёт объект Survey по его имени (survey_name).
     """
@@ -99,7 +117,7 @@ async def reset_incomplete_surveys() -> None:
         await session.commit()
 
 
-async def get_next_ready_pair(subject: str):
+async def get_next_ready_pair(subject: str) -> Optional[Pair]:
     """
     Первый Pair со status='ready' для данного сотрудника (subject),
     упорядочен по id — чтобы сохранять тот же порядок, что и в send_surveys().
@@ -122,3 +140,15 @@ async def save_answer(answer: Answer) -> None:
     async with async_session() as session:
         session.add(answer)
         await session.commit()
+
+
+async def get_file_id_by_name(name: str) -> Optional[str]:
+    async with async_session() as session:
+        stmt = select(Worker).where(Worker.full_name == name)
+        result = await session.execute(stmt)
+        worker = result.scalar_one_or_none()
+
+        if worker and worker.file_id:
+            return worker.file_id
+        return None
+

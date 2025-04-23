@@ -49,7 +49,8 @@ async def confirm_register(callback: CallbackQuery):
         await callback.answer()
         return
 
-    await callback.message.edit_text("🎉 Вы успешно зарегистрировались!")
+    await callback.message.edit_text("🎉 Регистрация прошла успешно! Вы можете отправить своё фото в любое время,"
+                                     " чтобы оно появлялось у других в опросах ")
     await callback.answer()
 
 
@@ -60,3 +61,25 @@ async def cancel_register(callback: CallbackQuery):
         reply_markup=await kb.build_worker_keyboard()
     )
     await callback.answer()
+
+
+@router.message(F.photo)
+async def handle_worker_photo(message: Message):
+    # Получаем последний (самый качественный) вариант фото
+    photo = message.photo[-1]
+    file_id = photo.file_id
+
+    # Получаем worker по chat_id
+    worker = await rq.get_worker_by_chat_id(message.from_user.id)
+
+    if not worker:
+        await message.answer("❗️ Вы ещё не зарегистрированы. Пожалуйста, сначала подтвердите свою личность.")
+        return
+
+    # Сохраняем file_id в БД
+    try:
+        await rq.set_worker_file_id(worker.id, file_id)
+        await message.answer("✅ Фото получено и сохранено. Спасибо!")
+
+    except:
+        await message.answer("❗️ Что-то пошло не так")

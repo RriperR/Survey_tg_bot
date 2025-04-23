@@ -17,15 +17,26 @@ class SurveyState(StatesGroup):
     answers = State()
 
 
-async def start_pair_survey(bot: Bot, chat_id: int, pair: Pair, state: FSMContext = None, dp: Dispatcher = None):
+async def start_pair_survey(bot: Bot, chat_id: int, pair: Pair, state: FSMContext = None, dp: Dispatcher = None, file_id: str = None):
     # 1. вступление
-    await bot.send_message(
-        chat_id,
-        text=(
+    if file_id:
+        await bot.send_photo(
+            chat_id=chat_id,
+            photo=file_id,
+            caption=(
             f"{pair.date} с вами работал(-а): {pair.object}.\n"
             f"Пожалуйста, пройдите опрос: {pair.survey}"
+            )
         )
-    )
+
+    else:
+        await bot.send_message(
+            chat_id,
+            text=(
+                f"{pair.date} с вами работал(-а): {pair.object}.\n"
+                f"Пожалуйста, пройдите опрос: {pair.survey}"
+            )
+        )
 
     # 2. FSM
     if state is None:
@@ -34,9 +45,6 @@ async def start_pair_survey(bot: Bot, chat_id: int, pair: Pair, state: FSMContex
     survey = await rq.get_survey_by_name(pair.survey)
 
     await state.update_data(survey=survey, pair=pair, answers=[])
-
-
-    print(f"current state: {await state.get_state()}. data: {await state.get_data()}")
 
     await ask_next_question(
         bot=bot,
@@ -54,7 +62,6 @@ async def ask_next_question(bot, user_id: int, question_index: int, state: FSMCo
     q_text = getattr(survey, f"question{question_index}")
     q_type = getattr(survey, f"question{question_index}_type")
 
-    print(await state.get_state())
 
     # отправляем вопрос
     if q_type == "int":
@@ -69,11 +76,23 @@ async def ask_next_question(bot, user_id: int, question_index: int, state: FSMCo
 # Обработчик для рейтинговых вопросов (inline)
 @router.callback_query(F.data.startswith("rate:"))
 async def handle_rate(callback: CallbackQuery, state: FSMContext):
-    _, question_index, rate = callback.data.split(":")
+    _, question_index, rate, timestamp = callback.data.split(":")
+    idx = int(question_index)
+
+    created_time = datetime.fromtimestamp(int(timestamp))
+    now = datetime.now()
+
+    if (now - created_time).total_seconds() > 86400:  # 24 часа
+        await callback.message.edit_text(text="Сообщение устарело", reply_markup=None)
+        return
 
     # сохраняем ответ
     data = await state.get_data()
     answers: list = data.get("answers")
+    if idx > 1 and len(answers) == 0:
+        await callback.message.edit_text(text="Сообщение устарело", reply_markup=None)
+        return
+
     answers.append(rate)
 
     await state.update_data(answers=answers)
@@ -82,9 +101,15 @@ async def handle_rate(callback: CallbackQuery, state: FSMContext):
     # отправим подтверждение (чтобы inline‑кнопка не крутилась)
     await callback.answer(f"Вы выбрали: {rate}")
 
+    text = callback.message.text
+    text += f"\n\n Вы поставили оценку {rate}"
+
+    await callback.message.edit_text(text=text, reply_markup=None)
+
+
     # переходим к следующему вопросу
     await ask_next_question(bot=callback.bot, user_id=callback.from_user.id,
-                            question_index=int(question_index)+1,
+                            question_index=idx+1,
                             state=state)
 
 
@@ -133,14 +158,12 @@ async def handle_text_answer(message: Message, state: FSMContext):
 
         await state.clear()
 
-        print(await state.get_state())
-        print(await state.get_data())
-
         # 2. проверяем, есть ли ещё ready‑опросы для этого же subject
         next_pair = await rq.get_next_ready_pair(pair.subject)
         if next_pair:
             await rq.update_pair_status(next_pair.id, "in_progress")
-            await start_pair_survey(message.bot, message.from_user.id, next_pair, state = state)
+            file_id = await rq.get_file_id_by_name(next_pair.object)
+            await start_pair_survey(message.bot, message.from_user.id, next_pair, state = state, file_id=file_id)
         else:
             await message.answer("Спасибо, опросы на сегодня закончились!")
 

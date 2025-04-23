@@ -1,3 +1,4 @@
+from datetime import datetime
 from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
 from aiogram.utils.keyboard import InlineKeyboardBuilder
 
@@ -44,10 +45,12 @@ async def build_confirm_keyboard(worker_id: int) -> InlineKeyboardMarkup:
 async def build_int_keyboard(question_index) -> InlineKeyboardMarkup:
     builder = InlineKeyboardBuilder()
 
+    timestamp = int(datetime.now().timestamp())
+
     for i in range(1,6):
         builder.button(
             text=str(i),
-            callback_data=f"rate:{question_index}:{i}"
+            callback_data=f"rate:{question_index}:{i}:{timestamp}"
         )
     builder.adjust(5)
     return builder.as_markup()

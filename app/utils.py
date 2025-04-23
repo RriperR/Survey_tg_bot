@@ -45,9 +45,6 @@ async def update_workers_from_sheet():
 
 async def update_pairs_from_sheet():
     async with async_session() as session:
-        #create_postgres_dump()
-        #print("дамп бд перед очисткой")
-        await clear_table(session, Pair)
 
         # Вкладка 1: Назначения опросов
         worksheet2 = spreadsheet.get_worksheet(1)
@@ -100,60 +97,10 @@ async def update_data_from_sheets():
     """
     Загружает данные из Google Sheets и сохраняет в PostgreSQL
     """
-    async with async_session() as session:
-        #create_postgres_dump() # дамп бд перед очисткой
-        #print("дамп бд перед очисткой")
-        await clear_all_tables(session) # Очищаем существующие записи
-        # print("Очищены существующие записи")
-
-        # Вкладка 0: Сотрудники
-        worksheet1 = spreadsheet.get_worksheet(0)
-        rows1 = worksheet1.get_all_values()[1:]  # пропускаем заголовок
-        for row in rows1:
-            worker = Worker(
-                full_name=row[0].strip(),
-                file_id=row[1].strip(),
-                chat_id=row[2].strip(),
-                speciality=row[3].strip(),
-                phone=row[4].strip(),
-            )
-            session.add(worker)
-
-        # Вкладка 1: Назначения опросов
-        worksheet2 = spreadsheet.get_worksheet(1)
-        rows2 = worksheet2.get_all_values()[1:]
-        for row in rows2:
-            pair = Pair(
-                subject=row[0].strip(),
-                object=row[1].strip(),
-                survey=row[2].strip(),
-                weekday=row[3].strip(),
-                date=row[4].strip(),
-            )
-            session.add(pair)
-
-        # Вкладка 2: Опросники
-        worksheet3 = spreadsheet.get_worksheet(2)
-        rows3 = worksheet3.get_all_values()[1:]
-
-        for row in rows3:
-            survey = Survey(
-                speciality=row[0].strip(),
-                question1=row[1].strip(),
-                question1_type=row[2].strip(),
-                question2=row[3].strip(),
-                question2_type=row[4].strip(),
-                question3=row[5].strip(),
-                question3_type=row[6].strip(),
-                question4=row[7].strip(),
-                question4_type=row[8].strip(),
-                question5=row[9].strip(),
-                question5_type=row[10].strip(),
-            )
-            session.add(survey)
-
-        await session.commit()
-        print("✅ Данные из Google Sheets успешно загружены в базу данных.")
+    await update_workers_from_sheet()
+    await update_pairs_from_sheet()
+    await update_surveys_from_sheet()
+    print("✅ Данные из Google Sheets успешно загружены в базу данных.")
 
 
 async def clear_table(session: AsyncSession, model):
@@ -201,3 +148,5 @@ def create_postgres_dump():
         print(f"✅ Дамп базы сохранён в {dump_file}")
     except subprocess.CalledProcessError as e:
         print(f"❌ Ошибка при создании дампа базы: {e}")
+
+
