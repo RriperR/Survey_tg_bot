@@ -10,6 +10,7 @@ from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from middlewares.logger import GroupLoggerMiddleware
 from handlers.register_handlers import router as register_router
 from handlers.survey_handlers import router as survey_router
+from handlers.admin_handlers import router as admin_router
 
 from database.models import async_main
 from services.survey_scheduler import send_surveys
@@ -25,6 +26,7 @@ dp = Dispatcher()
 
 async def main():
     await async_main()
+    dp.include_router(admin_router)
     dp.include_router(register_router)
     dp.include_router(survey_router)
 

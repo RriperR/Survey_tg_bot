@@ -17,7 +17,8 @@ class SurveyState(StatesGroup):
     answers = State()
 
 
-async def start_pair_survey(bot: Bot, chat_id: int, pair: Pair, state: FSMContext = None, dp: Dispatcher = None, file_id: str = None):
+async def start_pair_survey(bot: Bot, chat_id: int, pair: Pair,
+                            state: FSMContext = None, dp: Dispatcher = None, file_id: str = None) -> None:
     # 1. вступление
     if file_id:
         await bot.send_photo(
@@ -54,7 +55,7 @@ async def start_pair_survey(bot: Bot, chat_id: int, pair: Pair, state: FSMContex
     )
 
 
-async def ask_next_question(bot, user_id: int, question_index: int, state: FSMContext):
+async def ask_next_question(bot, user_id: int, question_index: int, state: FSMContext) -> None:
     # готовим текст и тип
     data = await state.get_data()
     survey = data.get("survey")

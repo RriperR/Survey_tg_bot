@@ -1,18 +1,17 @@
 from sqlalchemy import select, update
-from typing import Optional
 
 from database.models import async_session
 from database.models import Worker, Pair, Survey, Answer
 
 
-async def get_worker_by_fullname(full_name: str) -> Optional[Worker]:
+async def get_worker_by_fullname(full_name: str) -> Worker | None:
     async with async_session() as session:
         stmt = select(Worker).where(Worker.full_name == full_name)
         result = await session.execute(stmt)
         return result.scalar_one_or_none()
 
 
-async def get_worker_by_chat_id(chat_id: int) -> Optional[Worker]:
+async def get_worker_by_chat_id(chat_id: int) -> Worker | None:
     async with async_session() as session:
         stmt = select(Worker).where(Worker.chat_id == str(chat_id))
         result = await session.execute(stmt)
@@ -68,7 +67,7 @@ async def set_worker_file_id(worker_id: int, file_id: str) -> None:
             await session.commit()
 
 
-async def get_survey_by_name(survey_name: str) -> Optional[Survey]:
+async def get_survey_by_name(survey_name: str) -> Survey | None:
     """
     Найдёт объект Survey по его имени (survey_name).
     """
@@ -117,7 +116,7 @@ async def reset_incomplete_surveys() -> None:
         await session.commit()
 
 
-async def get_next_ready_pair(subject: str) -> Optional[Pair]:
+async def get_next_ready_pair(subject: str) -> Pair | None:
     """
     Первый Pair со status='ready' для данного сотрудника (subject),
     упорядочен по id — чтобы сохранять тот же порядок, что и в send_surveys().
@@ -142,7 +141,7 @@ async def save_answer(answer: Answer) -> None:
         await session.commit()
 
 
-async def get_file_id_by_name(name: str) -> Optional[str]:
+async def get_file_id_by_name(name: str) -> str | None:
     async with async_session() as session:
         stmt = select(Worker).where(Worker.full_name == name)
         result = await session.execute(stmt)
@@ -152,3 +151,8 @@ async def get_file_id_by_name(name: str) -> Optional[str]:
             return worker.file_id
         return None
 
+
+async def get_all_answers() -> list[Answer]:
+    async with async_session() as session:
+        result = await session.execute(select(Answer))
+        return result.scalars().all()

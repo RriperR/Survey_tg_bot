@@ -9,7 +9,8 @@ from sqlalchemy import delete
 from sqlalchemy.ext.asyncio import AsyncSession
 from oauth2client.service_account import ServiceAccountCredentials
 
-from database.models import async_session, Worker, Pair, Survey
+from database.models import async_session, Worker, Pair, Survey, Answer
+from database.requests import get_all_answers
 
 
 # Авторизация Google Sheets
@@ -20,7 +21,7 @@ client = gspread.authorize(creds)
 spreadsheet = client.open(os.environ.get("TABLE"))
 
 
-async def update_workers_from_sheet():
+async def update_workers_from_sheet() -> None:
     async with async_session() as session:
         #create_postgres_dump()
         #print("дамп бд перед очисткой")
@@ -43,7 +44,7 @@ async def update_workers_from_sheet():
         print("✅ Данные о работниках успешно загружены в базу данных.")
 
 
-async def update_pairs_from_sheet():
+async def update_pairs_from_sheet() -> None:
     async with async_session() as session:
 
         # Вкладка 1: Назначения опросов
@@ -63,7 +64,7 @@ async def update_pairs_from_sheet():
         print("✅ Данные о парах успешно загружены в базу данных.")
 
 
-async def update_surveys_from_sheet():
+async def update_surveys_from_sheet() -> None:
     async with async_session() as session:
         #create_postgres_dump()
         #print("дамп бд перед очисткой")
@@ -93,7 +94,7 @@ async def update_surveys_from_sheet():
         print("✅ Данные об опросах успешно загружены в базу данных.")
 
 
-async def update_data_from_sheets():
+async def update_data_from_sheets() -> None:
     """
     Загружает данные из Google Sheets и сохраняет в PostgreSQL
     """
@@ -103,12 +104,12 @@ async def update_data_from_sheets():
     print("✅ Данные из Google Sheets успешно загружены в базу данных.")
 
 
-async def clear_table(session: AsyncSession, model):
+async def clear_table(session: AsyncSession, model) -> None:
     await session.execute(delete(model))
     await session.commit()
 
 
-async def clear_all_tables(session: AsyncSession):
+async def clear_all_tables(session: AsyncSession) -> None:
     """
     Удаляет старые записи из таблиц Worker, Pair, Survey
     """
@@ -117,7 +118,7 @@ async def clear_all_tables(session: AsyncSession):
     await session.commit()
 
 
-def create_postgres_dump():
+def create_postgres_dump() -> None:
     """
     Создаёт дамп PostgreSQL перед очисткой таблиц
     """
@@ -150,3 +151,35 @@ def create_postgres_dump():
         print(f"❌ Ошибка при создании дампа базы: {e}")
 
 
+async def export_answers_to_google_sheet() -> None:
+    answers = await get_all_answers()
+    if not answers:
+        print("Нет данных для экспорта.")
+        return
+
+    # Заголовки и данные
+    headers = [column.name for column in Answer.__table__.columns]
+    data = [headers]  # Первая строка — заголовки
+
+    for answer in answers:
+        row = [getattr(answer, column) for column in headers]
+        data.append(row)
+
+    # Название листа
+    date_str = datetime.now().strftime("%d.%m.%Y")
+    sheet_title = f"Answers_{date_str}"
+
+    # Удалим старый лист, если есть
+    try:
+        worksheet = spreadsheet.worksheet(sheet_title)
+        spreadsheet.del_worksheet(worksheet)
+    except gspread.exceptions.WorksheetNotFound:
+        pass
+
+    # Новый лист
+    worksheet = spreadsheet.add_worksheet(title=sheet_title, rows=str(len(data)), cols=str(len(headers)))
+
+    # Загрузка данных
+    worksheet.update("A1", data)
+
+    print(f"Экспорт завершён. Лист '{sheet_title}' создан.")

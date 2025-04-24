@@ -9,7 +9,7 @@ from database.models import Pair
 from handlers.survey_handlers import start_pair_survey
 
 
-async def send_surveys(bot: Bot, dp: Dispatcher):
+async def send_surveys(bot: Bot, dp: Dispatcher) -> None:
     print("sending surveys")
     await rq.reset_incomplete_surveys()
 

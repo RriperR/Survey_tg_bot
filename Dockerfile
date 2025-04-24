@@ -1,5 +1,5 @@
 # Используем официальный образ Python
-FROM python:3.9-slim
+FROM python:3.13-alpine
 
 # Устанавливаем часовой пояс
 RUN ln -sf /usr/share/zoneinfo/Europe/Moscow /etc/localtime && \

@@ -2,7 +2,7 @@ from aiogram import F, Router
 from aiogram.filters import CommandStart, Command
 from aiogram.types import Message, CallbackQuery
 
-from utils import update_data_from_sheets
+
 import database.requests as rq
 import keyboards as kb
 
@@ -12,16 +12,7 @@ router = Router()
 
 @router.message(CommandStart())
 async def start(message: Message):
-    await message.answer("Hey!")
     await message.answer('Выберите своё ФИО, чтобы зарегистрироваться', reply_markup=await kb.build_worker_keyboard())
-
-
-@router.message(Command('upd'))
-async def get_chat_id(message: Message):
-    await message.answer('Загрузка...')
-    await update_data_from_sheets()
-    await message.answer('✅ Данные из Google Sheets успешно загружены в базу данных.')
-
 
 
 @router.callback_query(F.data.startswith("select_worker:"))
