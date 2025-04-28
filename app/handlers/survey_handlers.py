@@ -1,3 +1,4 @@
+import logging
 from datetime import datetime
 
 from aiogram import Router, F, Bot, Dispatcher
@@ -10,6 +11,9 @@ import database.requests as rq
 from database.models import Answer, Pair
 
 from keyboards import build_int_keyboard
+
+
+logger = logging.getLogger(__name__)
 
 router = Router()
 
@@ -98,9 +102,17 @@ async def handle_rate(callback: CallbackQuery, state: FSMContext):
 
     await state.update_data(answers=answers)
 
-
     # отправим подтверждение (чтобы inline‑кнопка не крутилась)
     await callback.answer(f"Вы выбрали: {rate}")
+
+    pair = data.get("pair")
+    subject = pair.subject
+
+    user = callback.from_user
+    logger.info(
+        f"Пользователь {subject} (id={user.id}, username={user.username}) "
+        f"нажал кнопку с callback_data='{callback.data}'"
+    )
 
     text = callback.message.text
     text += f"\n\n Вы поставили оценку {rate}"
@@ -124,6 +136,14 @@ async def handle_text_answer(message: Message, state: FSMContext):
 
     idx = len(answers)
 
+    pair = data.get("pair")
+    subject = pair.subject
+    user = message.from_user
+    logger.info(
+        f"Пользователь {subject} (id={user.id}, username={user.username}) "
+        f"ответил '{message.text}'"
+    )
+
 
     # следующий вопрос или завершение
     if idx < 5:
@@ -132,7 +152,6 @@ async def handle_text_answer(message: Message, state: FSMContext):
 
     else:
         a1, a2, a3, a4, a5 = data.get("answers")
-        pair = data.get("pair")
         survey = data.get("survey")
 
         ans = Answer(
