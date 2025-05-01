@@ -1,15 +1,13 @@
 import os
-import gspread
-import subprocess
-
 from datetime import datetime
-from pathlib import Path
+
+import gspread
 
 from sqlalchemy import delete, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from oauth2client.service_account import ServiceAccountCredentials
 
-from database.models import async_session, Worker, Pair, Survey, Answer
+from database.models import async_session, Worker, Pair, Survey
 from database.requests import get_all_answers
 
 
@@ -124,34 +122,32 @@ async def clear_table(session: AsyncSession, model) -> None:
 
 async def export_answers_to_google_sheet() -> None:
     # Получаем все записи из таблицы Answer
-    async with async_session() as session:
-        result = await session.execute(select(Answer))
-        answers = result.scalars().all()
+    answers = await get_all_answers()
 
-        worksheet4 = spreadsheet.get_worksheet(3)
+    worksheet4 = spreadsheet.get_worksheet(3)
 
-        # Очищаем гугл таблицу
-        worksheet4.clear()
+    # Очищаем гугл таблицу
+    worksheet4.clear()
 
-        # Заголовки, исключая 'id' и 'subject'
-        headers = [
-            "object", "survey", "survey_date", "completed_at",
-            "question1", "answer1",
-            "question2", "answer2",
-            "question3", "answer3",
-            "question4", "answer4",
-            "question5", "answer5"
+    # Заголовки, исключая 'id' и 'subject'
+    headers = [
+        "object", "survey", "survey_date", "completed_at",
+        "question1", "answer1",
+        "question2", "answer2",
+        "question3", "answer3",
+        "question4", "answer4",
+        "question5", "answer5"
+    ]
+    worksheet4.append_row(headers)
+
+    # Заполняем таблицу строками из БД
+    for ans in answers:
+        row = [
+            ans.object, ans.survey, ans.survey_date, ans.completed_at,
+            ans.question1, ans.answer1,
+            ans.question2, ans.answer2,
+            ans.question3, ans.answer3,
+            ans.question4, ans.answer4,
+            ans.question5, ans.answer5
         ]
-        worksheet4.append_row(headers)
-
-        # Заполняем таблицу строками из БД
-        for ans in answers:
-            row = [
-                ans.object, ans.survey, ans.survey_date, ans.completed_at,
-                ans.question1, ans.answer1,
-                ans.question2, ans.answer2,
-                ans.question3, ans.answer3,
-                ans.question4, ans.answer4,
-                ans.question5, ans.answer5
-            ]
-            worksheet4.append_row([str(cell) if cell is not None else "" for cell in row])
+        worksheet4.append_row([str(cell) if cell is not None else "" for cell in row])
