@@ -54,7 +54,7 @@ async def main():
     dp.include_router(survey_router)
 
     scheduler = AsyncIOScheduler()
-    scheduler.add_job(update_pairs_from_sheet, 'cron', day_of_week='sun', hour=23, minute=50)
+    scheduler.add_job(update_pairs_from_sheet, 'cron', hour=19, minute=50)
     scheduler.add_job(send_surveys, 'cron', hour=20, minute=0, args=[bot, dp])
     scheduler.add_job(export_answers_to_google_sheet, 'cron', day_of_week='sun', hour=23, minute=0)
     scheduler.start()

@@ -5,7 +5,7 @@ import subprocess
 from datetime import datetime
 from pathlib import Path
 
-from sqlalchemy import delete
+from sqlalchemy import delete, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from oauth2client.service_account import ServiceAccountCredentials
 
@@ -23,42 +23,52 @@ spreadsheet = client.open(os.environ.get("TABLE"))
 
 async def update_workers_from_sheet() -> None:
     async with async_session() as session:
-        #create_postgres_dump()
-        #print("дамп бд перед очисткой")
-        await clear_table(session, Worker)
+        # Получаем все существующие full_name из БД
+        existing_full_names = {
+            row async for row in await session.stream_scalars(
+                select(Worker.full_name)
+            )
+        }
 
-        # Вкладка 0: Сотрудники
+        print(existing_full_names)
+
         worksheet1 = spreadsheet.get_worksheet(0)
         rows1 = worksheet1.get_all_values()[1:]  # пропускаем заголовок
+        count = 0
         for row in rows1:
-            worker = Worker(
-                full_name=row[0].strip(),
-                file_id=row[1].strip(),
-                chat_id=row[2].strip(),
-                speciality=row[3].strip(),
-                phone=row[4].strip(),
-            )
-            session.add(worker)
+            full_name = row[0].strip()
+            if full_name and full_name not in existing_full_names:
+                worker = Worker(
+                    full_name=full_name,
+                    file_id=row[1].strip() if len(row) > 2 else "",
+                    chat_id=row[2].strip() if len(row) > 2 else "",
+                    speciality=row[3].strip() if len(row) > 3 else "",
+                    phone=row[4].strip() if len(row) > 4 else "",
+                )
+                session.add(worker)
+                count += 1
 
         await session.commit()
-        print("✅ Данные о работниках успешно загружены в базу данных.")
+        print(f"✅ Загружено {count} новых работников из Google Таблицы.")
 
 
 async def update_pairs_from_sheet() -> None:
-    async with async_session() as session:
+    today_str = datetime.now().strftime("%d.%m.%Y")
 
-        # Вкладка 1: Назначения опросов
+    async with async_session() as session:
         worksheet2 = spreadsheet.get_worksheet(1)
         rows2 = worksheet2.get_all_values()[1:]
+
         for row in rows2:
-            pair = Pair(
-                subject=row[0].strip(),
-                object=row[1].strip(),
-                survey=row[2].strip(),
-                weekday=row[3].strip(),
-                date=row[4].strip(),
-            )
-            session.add(pair)
+            if len(row) >= 5 and row[4].strip() == today_str:
+                pair = Pair(
+                    subject=row[0].strip(),
+                    object=row[1].strip(),
+                    survey=row[2].strip(),
+                    weekday=row[3].strip(),
+                    date=row[4].strip(),
+                )
+                session.add(pair)
 
         await session.commit()
         print("✅ Данные о парах успешно загружены в базу данных.")
@@ -66,27 +76,30 @@ async def update_pairs_from_sheet() -> None:
 
 async def update_surveys_from_sheet() -> None:
     async with async_session() as session:
-        #create_postgres_dump()
-        #print("дамп бд перед очисткой")
         await clear_table(session, Survey)
 
-        # Вкладка 2: Опросники
         worksheet3 = spreadsheet.get_worksheet(2)
-        rows3 = worksheet3.get_all_values()[1:]
+        rows3 = worksheet3.get_all_values()[1:]  # Пропускаем заголовок
 
         for row in rows3:
+            id_value = row[0].strip()
+            if not id_value.isdigit():
+                print(f"⛔ Пропущена строка с некорректным ID: {row}")
+                continue
+
             survey = Survey(
-                speciality=row[0].strip(),
-                question1=row[1].strip(),
-                question1_type=row[2].strip(),
-                question2=row[3].strip(),
-                question2_type=row[4].strip(),
-                question3=row[5].strip(),
-                question3_type=row[6].strip(),
-                question4=row[7].strip(),
-                question4_type=row[8].strip(),
-                question5=row[9].strip(),
-                question5_type=row[10].strip(),
+                id=int(id_value),
+                speciality=row[1].strip(),
+                question1=row[2].strip(),
+                question1_type=row[3].strip(),
+                question2=row[4].strip(),
+                question2_type=row[5].strip(),
+                question3=row[6].strip(),
+                question3_type=row[7].strip(),
+                question4=row[8].strip(),
+                question4_type=row[9].strip(),
+                question5=row[10].strip(),
+                question5_type=row[11].strip(),
             )
             session.add(survey)
 
@@ -109,77 +122,36 @@ async def clear_table(session: AsyncSession, model) -> None:
     await session.commit()
 
 
-async def clear_all_tables(session: AsyncSession) -> None:
-    """
-    Удаляет старые записи из таблиц Worker, Pair, Survey
-    """
-    for model in (Worker, Pair, Survey):
-        await session.execute(delete(model))
-    await session.commit()
-
-
-def create_postgres_dump() -> None:
-    """
-    Создаёт дамп PostgreSQL перед очисткой таблиц
-    """
-    print("начало работы create_postgres_dump")
-    dump_dir = Path("db_backups")
-    dump_dir.mkdir(exist_ok=True)
-    print("директория создана")
-
-    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-    dump_file = dump_dir / f"backup_{timestamp}.sql"
-    print("создание команды")
-    command = [
-        "pg_dump",
-        "-h", os.environ.get("DB_HOST", "localhost"),
-        "-p", os.environ.get("DB_PORT", "5432"),
-        "-U", os.environ["DB_USER"],
-        "-d", os.environ["DB_NAME"],
-        "-f", str(dump_file)
-    ]
-
-    env = os.environ.copy()
-    # Убедись, что переменная окружения PGPASSWORD установлена
-    if "DB_PASSWORD" in env:
-        env["PGPASSWORD"] = env["DB_PASS"]
-
-    try:
-        subprocess.run(command, env=env, check=True)
-        print(f"✅ Дамп базы сохранён в {dump_file}")
-    except subprocess.CalledProcessError as e:
-        print(f"❌ Ошибка при создании дампа базы: {e}")
-
-
 async def export_answers_to_google_sheet() -> None:
-    answers = await get_all_answers()
-    if not answers:
-        print("Нет данных для экспорта.")
-        return
+    # Получаем все записи из таблицы Answer
+    async with async_session() as session:
+        result = await session.execute(select(Answer))
+        answers = result.scalars().all()
 
-    # Заголовки и данные
-    headers = [column.name for column in Answer.__table__.columns]
-    data = [headers]  # Первая строка — заголовки
+        worksheet4 = spreadsheet.get_worksheet(3)
 
-    for answer in answers:
-        row = [getattr(answer, column) for column in headers]
-        data.append(row)
+        # Очищаем гугл таблицу
+        worksheet4.clear()
 
-    # Название листа
-    date_str = datetime.now().strftime("%d.%m.%Y")
-    sheet_title = f"Answers_{date_str}"
+        # Заголовки, исключая 'id' и 'subject'
+        headers = [
+            "object", "survey", "survey_date", "completed_at",
+            "question1", "answer1",
+            "question2", "answer2",
+            "question3", "answer3",
+            "question4", "answer4",
+            "question5", "answer5"
+        ]
+        worksheet4.append_row(headers)
 
-    # Удалим старый лист, если есть
-    try:
-        worksheet = spreadsheet.worksheet(sheet_title)
-        spreadsheet.del_worksheet(worksheet)
-    except gspread.exceptions.WorksheetNotFound:
-        pass
-
-    # Новый лист
-    worksheet = spreadsheet.add_worksheet(title=sheet_title, rows=str(len(data)), cols=str(len(headers)))
-
-    # Загрузка данных
-    worksheet.update("A1", data)
-
-    print(f"Экспорт завершён. Лист '{sheet_title}' создан.")
+        # Заполняем таблицу строками из БД
+        for ans in answers:
+            row = [
+                ans.object, ans.survey, ans.survey_date, ans.completed_at,
+                ans.question1, ans.answer1,
+                ans.question2, ans.answer2,
+                ans.question3, ans.answer3,
+                ans.question4, ans.answer4,
+                ans.question5, ans.answer5
+            ]
+            worksheet4.append_row([str(cell) if cell is not None else "" for cell in row])
