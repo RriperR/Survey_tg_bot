@@ -43,6 +43,8 @@ async def start_pair_survey(bot: Bot, chat_id: int, pair: Pair,
             )
         )
 
+    logger.info(f"Отправлен опрос для {pair.subject} от {pair.date}, id: {pair.id}")
+
     # 2. FSM
     if state is None:
         state = dp.fsm.get_context(bot, chat_id, chat_id)
@@ -136,12 +138,12 @@ async def handle_text_answer(message: Message, state: FSMContext):
 
     idx = len(answers)
 
-    pair = data.get("pair")
-    subject = pair.subject
+    pair: Pair = data.get("pair")
+    subject: str = pair.subject
     user = message.from_user
     logger.info(
-        f"Пользователь {subject} (id={user.id}, username={user.username}) "
-        f"ответил '{message.text}'"
+        f'Пользователь {subject} (id={user.id}, username={user.username}) '
+        f'ответил "{message.text}" на {idx} вопрос. id опроса: {pair.id}'
     )
 
 
@@ -171,10 +173,13 @@ async def handle_text_answer(message: Message, state: FSMContext):
             question5=survey.question5,
             answer5=a5,
         )
-        await rq.save_answer(ans)
 
-        # сохранён ответ ...
-        await rq.update_pair_status(pair.id, "done")  # 1. отмечаем завершение
+        try:
+            await rq.save_answer(ans)
+            # сохранён ответ ...
+            await rq.update_pair_status(pair.id, "done")  # 1. отмечаем завершение
+        except Exception as e:
+            logger.error(f"Ошибка завершения для опроса с id {pair.id}: {e}")
 
         await state.clear()
 
@@ -186,4 +191,3 @@ async def handle_text_answer(message: Message, state: FSMContext):
             await start_pair_survey(message.bot, message.from_user.id, next_pair, state = state, file_id=file_id)
         else:
             await message.answer("Спасибо, опросы на сегодня закончились!")
-

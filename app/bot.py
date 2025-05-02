@@ -13,6 +13,7 @@ from handlers.admin_handlers import router as admin_router
 
 from database.models import async_main
 from services.reports import send_monthly_reports
+from services.survey_reset import reset_surveys_and_notify_users
 from services.survey_scheduler import send_surveys
 from utils import update_pairs_from_sheet, export_answers_to_google_sheet
 
@@ -54,7 +55,9 @@ async def main():
     dp.include_router(register_router)
     dp.include_router(survey_router)
 
-    await send_monthly_reports(bot)
+    # await send_monthly_reports(bot)
+    await reset_surveys_and_notify_users(bot)
+    await send_surveys(bot, dp)
 
     scheduler = AsyncIOScheduler()
     scheduler.add_job(update_pairs_from_sheet, 'cron', hour=19, minute=50)

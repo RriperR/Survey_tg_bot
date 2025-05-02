@@ -156,3 +156,12 @@ async def get_all_answers() -> list[Answer]:
     async with async_session() as session:
         result = await session.execute(select(Answer))
         return result.scalars().all()
+
+async def get_in_progress_pairs() -> list[Pair]:
+    """
+    Все пары, которые находятся в процессе заполнения.
+    """
+    async with async_session() as session:
+        stmt = select(Pair).where(Pair.status == "in_progress")
+        result = await session.execute(stmt)
+        return result.scalars().all()

@@ -1,3 +1,4 @@
+import logging
 from collections import defaultdict
 from datetime import datetime
 
@@ -9,8 +10,10 @@ from database.models import Pair
 from handlers.survey_handlers import start_pair_survey
 
 
+logger = logging.getLogger(__name__)
+
 async def send_surveys(bot: Bot, dp: Dispatcher) -> None:
-    print("sending surveys")
+    logger.info("📤 Запуск рассылки опросов")
     await rq.reset_incomplete_surveys()
 
     today = datetime.now().strftime('%d.%m.%Y')
@@ -18,24 +21,34 @@ async def send_surveys(bot: Bot, dp: Dispatcher) -> None:
 
     # сгруппируем по пользователю
     by_user: dict[str, list[Pair]] = defaultdict(list)
+
     for p in pairs:
         by_user[p.subject].append(p)
 
     for subject, user_pairs in by_user.items():
-        worker = await rq.get_worker_by_fullname(subject)
+        try:
+            worker = await rq.get_worker_by_fullname(subject)
+        except Exception as e:
+            logger.error(f"get_worker_by_fullname: {e}. subject: {subject}.")
+
         if not worker or not worker.chat_id:
+            logger.warning(f"Не удалось найти chat_id для {subject}")
             continue
 
         # проверяем, нет ли активного опроса
         if any(p.status == "in_progress" for p in user_pairs):
+            logger.warning(f"Для {subject} уже есть активный опрос")
             continue                   # дождёмся его окончания
 
         first_pair = user_pairs[0]     # берём ровно один
 
-        # Помечаем «в работе»
-        await rq.update_pair_status(first_pair.id, "in_progress")
+        try:
+            # Помечаем «в работе»
+            await rq.update_pair_status(first_pair.id, "in_progress")
 
-        file_id = await rq.get_file_id_by_name(first_pair.object)
+            file_id = await rq.get_file_id_by_name(first_pair.object)
 
-        await start_pair_survey(bot, int(worker.chat_id), first_pair, dp=dp, file_id=file_id)
-
+            await start_pair_survey(bot, int(worker.chat_id), first_pair, dp=dp, file_id=file_id)
+            logger.info(f"Опрос для {subject} отправлен")
+        except Exception as e:
+            logger.error(f"Failed to start pair survey: {e}")

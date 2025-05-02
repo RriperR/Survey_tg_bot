@@ -21,33 +21,50 @@ spreadsheet = client.open(os.environ.get("TABLE"))
 
 async def update_workers_from_sheet() -> None:
     async with async_session() as session:
-        # Получаем все существующие full_name из БД
-        existing_full_names = {
-            row async for row in await session.stream_scalars(
-                select(Worker.full_name)
-            )
+        # Загружаем всех сотрудников из БД
+        existing_workers = {
+            worker.full_name: worker
+            async for worker in await session.stream_scalars(select(Worker))
         }
-
-        print(existing_full_names)
 
         worksheet1 = spreadsheet.get_worksheet(0)
         rows1 = worksheet1.get_all_values()[1:]  # пропускаем заголовок
-        count = 0
+        created = 0
+
         for row in rows1:
             full_name = row[0].strip()
-            if full_name and full_name not in existing_full_names:
+            file_id = row[1].strip() if len(row) > 1 else ""
+            chat_id = row[2].strip() if len(row) > 2 else ""
+            speciality = row[3].strip() if len(row) > 3 else ""
+            phone = row[4].strip() if len(row) > 4 else ""
+
+            if not full_name:
+                continue
+
+            existing = existing_workers.get(full_name)
+
+            if existing:
+                # Обновляем chat_id, если он есть в таблице и отсутствует в БД
+                if chat_id and not existing.chat_id:
+                    existing.chat_id = chat_id
+                # Обновляем file_id, если он есть в таблице и отсутствует в БД
+                if file_id and not existing.file_id:
+                    existing.file_id = file_id
+
+            else:
+                # Новый сотрудник
                 worker = Worker(
                     full_name=full_name,
-                    file_id=row[1].strip() if len(row) > 2 else "",
-                    chat_id=row[2].strip() if len(row) > 2 else "",
-                    speciality=row[3].strip() if len(row) > 3 else "",
-                    phone=row[4].strip() if len(row) > 4 else "",
+                    file_id=file_id,
+                    chat_id=chat_id,
+                    speciality=speciality,
+                    phone=phone,
                 )
                 session.add(worker)
-                count += 1
+                created += 1
 
         await session.commit()
-        print(f"✅ Загружено {count} новых работников из Google Таблицы.")
+        print(f"✅ Загружено новых: {created}")
 
 
 async def update_pairs_from_sheet() -> None:
