@@ -1,9 +1,9 @@
-import logging
 from aiogram import Bot
 from database import requests as rq
 from database.models import Pair
+from logger import setup_logger
 
-logger = logging.getLogger(__name__)
+logger = setup_logger("reset", "reset.log")
 
 
 async def reset_surveys_and_notify_users(bot: Bot) -> None:

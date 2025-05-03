@@ -1,4 +1,3 @@
-import logging
 from collections import defaultdict
 from datetime import datetime
 
@@ -8,9 +7,9 @@ from database import requests as rq
 
 from database.models import Pair
 from handlers.survey_handlers import start_pair_survey
+from logger import setup_logger
 
-
-logger = logging.getLogger(__name__)
+logger = setup_logger("surveys", "surveys.log")
 
 async def send_surveys(bot: Bot, dp: Dispatcher) -> None:
     logger.info("📤 Запуск рассылки опросов")
@@ -40,15 +39,15 @@ async def send_surveys(bot: Bot, dp: Dispatcher) -> None:
             logger.warning(f"Для {subject} уже есть активный опрос")
             continue                   # дождёмся его окончания
 
-        first_pair = user_pairs[0]     # берём ровно один
+        pair = user_pairs[0]     # берём ровно один
 
         try:
             # Помечаем «в работе»
-            await rq.update_pair_status(first_pair.id, "in_progress")
+            await rq.update_pair_status(pair.id, "in_progress")
 
-            file_id = await rq.get_file_id_by_name(first_pair.object)
+            file_id = await rq.get_file_id_by_name(pair.object)
 
-            await start_pair_survey(bot, int(worker.chat_id), first_pair, dp=dp, file_id=file_id)
-            logger.info(f"Опрос для {subject} отправлен")
+            await start_pair_survey(bot, int(worker.chat_id), pair, dp=dp, file_id=file_id)
+            logger.info(f"Отправлен опрос для {pair.subject} от {pair.date}, id: {pair.id}")
         except Exception as e:
             logger.error(f"Failed to start pair survey: {e}")

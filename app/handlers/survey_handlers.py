@@ -1,4 +1,3 @@
-import logging
 from datetime import datetime
 
 from aiogram import Router, F, Bot, Dispatcher
@@ -11,9 +10,9 @@ import database.requests as rq
 from database.models import Answer, Pair
 
 from keyboards import build_int_keyboard
+from logger import setup_logger
 
-
-logger = logging.getLogger(__name__)
+logger = setup_logger("actions", "actions.log")
 
 router = Router()
 
@@ -42,8 +41,6 @@ async def start_pair_survey(bot: Bot, chat_id: int, pair: Pair,
                 f"Пожалуйста, пройдите опрос: {pair.survey}"
             )
         )
-
-    logger.info(f"Отправлен опрос для {pair.subject} от {pair.date}, id: {pair.id}")
 
     # 2. FSM
     if state is None:

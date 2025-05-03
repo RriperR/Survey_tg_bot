@@ -1,8 +1,6 @@
 import os
 import asyncio
-import logging
 
-from logging.handlers import TimedRotatingFileHandler
 from dotenv import load_dotenv
 from aiogram import Bot, Dispatcher
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
@@ -16,35 +14,12 @@ from services.reports import send_monthly_reports
 from services.survey_reset import reset_surveys_and_notify_users
 from services.survey_scheduler import send_surveys
 from utils import update_pairs_from_sheet, export_answers_to_google_sheet
+from logger import setup_logger
 
-
-def init_logging():
-    os.makedirs("logs", exist_ok=True)
-
-    # Сброс всех старых хендлеров root-логгера
-    root_logger = logging.getLogger()
-    if root_logger.hasHandlers():
-        root_logger.handlers.clear()
-
-    file_handler = TimedRotatingFileHandler(
-        filename="logs/bot.log",
-        when="midnight",
-        interval=1,
-        backupCount=7,
-        encoding="utf-8"
-    )
-    file_handler.setFormatter(logging.Formatter(
-        "%(asctime)s - %(name)s - %(levelname)s - %(message)s"
-    ))
-
-    logging.basicConfig(
-        level=logging.INFO,
-        handlers=[file_handler]
-    )
 
 async def main():
     load_dotenv()
-    init_logging()
+    logger = setup_logger("bot", "bot.log")
 
     bot = Bot(token=os.getenv("BOT_TOKEN"))
     dp = Dispatcher()
@@ -55,7 +30,7 @@ async def main():
     dp.include_router(register_router)
     dp.include_router(survey_router)
 
-    # await send_monthly_reports(bot)
+    await send_monthly_reports(bot)
     await reset_surveys_and_notify_users(bot)
     await send_surveys(bot, dp)
 
@@ -66,7 +41,7 @@ async def main():
     scheduler.add_job(send_monthly_reports, 'cron', day=1, hour=16, minute=38, args=[bot])
     scheduler.start()
 
-    logging.info(f"Scheduler started with jobs: {scheduler.get_jobs()}")
+    logger.info(f"Scheduler started with jobs: {scheduler.get_jobs()}")
 
     await dp.start_polling(bot)
 

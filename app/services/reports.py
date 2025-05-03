@@ -1,5 +1,3 @@
-import logging
-
 from datetime import datetime, timedelta
 from zoneinfo import ZoneInfo
 from collections import defaultdict
@@ -9,9 +7,9 @@ from aiogram import Bot
 from sqlalchemy import select
 
 from database.models import async_session, Answer, Worker, Survey
+from logger import setup_logger
 
-
-logger = logging.getLogger(__name__)
+logger = setup_logger("reports", "reports.log")
 
 def parse_russian_date(date_str: str) -> datetime | None:
     try:
@@ -92,45 +90,44 @@ def _format_report_text(
     worker_name: str,
     results: dict[str, dict[str, dict[str, list[int]]]],
     open_answers: dict[str, list[str]]
-) -> str:
-    text = f"📊 *Результаты для {worker_name}*\n\n"
-
-    # Удаляем дублирующиеся периоды
+) -> list[str]:
+    messages: list[str] = []
     period_values_seen = set()
+
     for period_name, surveys in results.items():
         serialized = str(sorted((survey, question, sorted(scores))
-                                for survey, questions in surveys.items()
-                                for question, scores in questions.items()))
-        if serialized in period_values_seen:
+                                 for survey, questions in surveys.items()
+                                 for question, scores in questions.items()))
+        if serialized in period_values_seen or not surveys:
             continue
         period_values_seen.add(serialized)
 
-        if not surveys:
-            continue
-        text += f"📅 *{period_name}:*\n"
+        text = f"📊 Результаты за 📅 *{period_name}:*\n\n"
+
         for survey_title, questions in surveys.items():
             text += f"🔹 _Опрос:_ *{survey_title}*\n"
             for question, scores in questions.items():
                 avg = round(sum(scores) / len(scores), 2)
                 text += f"• {question}\n *{avg}* из 5 ({len(scores)} оценок)\n\n"
-        text += "\n"
 
-    # Группировка открытых ответов
-    if open_answers:
-        text += f"📝 *Рекомендации за последний месяц:*\n"
-        for survey_title, qa_pairs in open_answers.items():
-            grouped: dict[str, list[str]] = defaultdict(list)
-            for question, answer in qa_pairs:
-                grouped[question.strip()].append(answer.strip())
+        # 👇 Вставляем рекомендации только в блок "Месяц"
+        if period_name == "Месяц" and open_answers:
+            text += f"📝 *Рекомендации:*\n"
+            for survey_title, qa_pairs in open_answers.items():
+                grouped: dict[str, list[str]] = defaultdict(list)
+                for question, answer in qa_pairs:
+                    grouped[question.strip()].append(answer.strip())
 
-            text += f"\n_Опрос:_ *{survey_title}*\n"
-            for question, answers in grouped.items():
-                text += f"• {question}\n"
-                for a in answers:
-                    text += f"    - {a}\n"
-                text += "\n"
+                text += f"\n_Опрос:_ *{survey_title}*\n"
+                for question, answers in grouped.items():
+                    text += f"• {question}\n"
+                    for a in answers:
+                        text += f"    - {a}\n"
+                    text += "\n"
 
-    return text.strip()
+        messages.append(text.strip())
+
+    return messages
 
 
 async def send_monthly_reports(bot: Bot):
@@ -169,7 +166,9 @@ async def send_monthly_reports(bot: Bot):
             text = _format_report_text(worker.full_name, results, open_answers)
 
             try:
-                await safe_send_long_message(bot, worker.chat_id, text)
+                messages = _format_report_text(worker.full_name, results, open_answers)
+                for message in messages:
+                    await safe_send_long_message(bot, worker.chat_id, message)
                 logger.info(f"✅ Отчёт отправлен: {worker.full_name} ({worker.chat_id})")
                 sent_count += 1
             except Exception as e:
