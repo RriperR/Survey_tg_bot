@@ -6,11 +6,11 @@ from aiogram.types import Message, CallbackQuery
 
 import database.requests as rq
 import keyboards as kb
-
+from logger import setup_logger
 
 router = Router()
 
-logger = logging.getLogger(__name__)
+logger = setup_logger("reg_handlers", "reg.log")
 
 
 @router.message(CommandStart())

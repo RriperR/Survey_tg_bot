@@ -50,4 +50,4 @@ async def send_surveys(bot: Bot, dp: Dispatcher) -> None:
             await start_pair_survey(bot, int(worker.chat_id), pair, dp=dp, file_id=file_id)
             logger.info(f"Отправлен опрос для {pair.subject} от {pair.date}, id: {pair.id}")
         except Exception as e:
-            logger.error(f"Failed to start pair survey: {e}")
+            logger.error(f"Failed to start pair survey: {e}. id: {pair.id}")
