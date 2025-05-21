@@ -30,9 +30,7 @@ async def main():
     dp.include_router(register_router)
     dp.include_router(survey_router)
 
-    await send_monthly_reports(bot)
     await reset_surveys_and_notify_users(bot)
-    await send_surveys(bot, dp)
 
     scheduler = AsyncIOScheduler()
     scheduler.add_job(update_pairs_from_sheet, 'cron', hour=19, minute=50)
