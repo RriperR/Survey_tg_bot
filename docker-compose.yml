@@ -7,21 +7,20 @@ services:
     depends_on:
       - db
     volumes:
-      - ./app/bot.py:/code/app/bot.py
+      - ./app/:/code/app/
       - ./logs:/code/logs
-    restart: always
 
   db:
-    env_file:
-      - .env
-    image: postgres
+    image: postgres:16
     container_name: survey_db
-    volumes:
-      - pgdata:/var/lib/postgresql/data
-      - ./init.sql:/docker-entrypoint-initdb.d/init.sql
+    environment:
+      POSTGRES_USER: ${DB_USER}
+      POSTGRES_PASSWORD: ${DB_PASSWORD}
+      POSTGRES_DB: ${DB_NAME}
     ports:
       - "5435:5432"
-    restart: always
+    volumes:
+      - pgdata:/var/lib/postgresql/data
 
 volumes:
   pgdata:
