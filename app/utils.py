@@ -168,3 +168,9 @@ async def export_answers_to_google_sheet() -> None:
             ans.question5, ans.answer5
         ]
         worksheet4.append_row([str(cell) if cell is not None else "" for cell in row])
+
+
+def get_doctors_from_sheet() -> list[str]:
+    worksheet = spreadsheet.get_worksheet(4)
+    rows = worksheet.get_all_values()[1:]
+    return [row[0].strip() for row in rows if row and row[0].strip()]

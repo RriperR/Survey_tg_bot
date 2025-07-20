@@ -8,6 +8,7 @@ from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from handlers.register_handlers import router as register_router
 from handlers.survey_handlers import router as survey_router
 from handlers.admin_handlers import router as admin_router
+from handlers.shift_handlers import router as shift_router
 
 from database.models import async_main
 from services.reports import send_monthly_reports
@@ -29,6 +30,7 @@ async def main():
     dp.include_router(admin_router)
     dp.include_router(register_router)
     dp.include_router(survey_router)
+    dp.include_router(shift_router)
 
     await reset_surveys_and_notify_users(bot)
 

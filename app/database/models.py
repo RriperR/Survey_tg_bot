@@ -82,6 +82,15 @@ class Answer(Base):
     answer5 = Column(Text)
 
 
+class Shift(Base):
+    __tablename__ = "shifts"
+    id = Column(BigInteger, primary_key=True)
+    assistant_id = Column(BigInteger)
+    doctor_name = Column(Text)
+    date = Column(String(31))
+    type = Column(String(10))
+
+
 async def async_main():
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
