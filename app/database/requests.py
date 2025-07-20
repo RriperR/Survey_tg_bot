@@ -1,7 +1,7 @@
 from sqlalchemy import select, update
 
 from database.models import async_session
-from database.models import Worker, Pair, Survey, Answer
+from database.models import Worker, Pair, Survey, Answer, Shift
 
 
 async def get_worker_by_fullname(full_name: str) -> Worker | None:
@@ -165,3 +165,37 @@ async def get_in_progress_pairs() -> list[Pair]:
         stmt = select(Pair).where(Pair.status == "in_progress")
         result = await session.execute(stmt)
         return result.scalars().all()
+
+
+async def add_shift(assistant_id: int, doctor_name: str,
+                    shift_type: str, date: str) -> bool:
+    async with async_session() as session:
+        existing = await session.execute(
+            select(Shift).where(
+                Shift.assistant_id == assistant_id,
+                Shift.date == date,
+                Shift.type == shift_type,
+            )
+        )
+        if existing.scalar_one_or_none():
+            return False
+
+        existing = await session.execute(
+            select(Shift).where(
+                Shift.doctor_name == doctor_name,
+                Shift.date == date,
+                Shift.type == shift_type,
+            )
+        )
+        if existing.scalar_one_or_none():
+            return False
+
+        shift = Shift(
+            assistant_id=assistant_id,
+            doctor_name=doctor_name,
+            date=date,
+            type=shift_type,
+        )
+        session.add(shift)
+        await session.commit()
+        return True
