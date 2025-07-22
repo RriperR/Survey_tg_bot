@@ -89,6 +89,7 @@ class Shift(Base):
     doctor_name = Column(Text)
     date = Column(String(31))
     type = Column(String(10))
+    assistant_name = Column(Text, nullable=True)
 
 
 async def async_main():
