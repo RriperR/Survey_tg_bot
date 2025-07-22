@@ -8,7 +8,11 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from oauth2client.service_account import ServiceAccountCredentials
 
 from database.models import async_session, Worker, Pair, Survey
-from database.requests import get_all_answers
+from database.requests import (
+    get_all_answers,
+    clear_shifts,
+    bulk_insert_shifts,
+)
 
 
 # Авторизация Google Sheets
@@ -122,6 +126,26 @@ async def update_surveys_from_sheet() -> None:
         print("✅ Данные об опросах успешно загружены в базу данных.")
 
 
+async def update_shifts_from_sheet() -> None:
+    worksheet = spreadsheet.get_worksheet(4)
+    rows = worksheet.get_all_values()[1:]
+    schedule: list[tuple[str, str, str]] = []
+    for row in rows:
+        if len(row) < 3:
+            continue
+        doctor_name = row[0].strip()
+        date = row[1].strip()
+        shift_type = row[2].strip()
+        if not doctor_name or not date or not shift_type:
+            continue
+        schedule.append((doctor_name, date, shift_type))
+
+    await clear_shifts()
+    if schedule:
+        await bulk_insert_shifts(schedule)
+    print("✅ Данные о сменах успешно загружены в базу данных.")
+
+
 async def update_data_from_sheets() -> None:
     """
     Загружает данные из Google Sheets и сохраняет в PostgreSQL
@@ -129,6 +153,7 @@ async def update_data_from_sheets() -> None:
     await update_workers_from_sheet()
     await update_pairs_from_sheet()
     await update_surveys_from_sheet()
+    await update_shifts_from_sheet()
     print("✅ Данные из Google Sheets успешно загружены в базу данных.")
 
 
@@ -170,7 +195,3 @@ async def export_answers_to_google_sheet() -> None:
         worksheet4.append_row([str(cell) if cell is not None else "" for cell in row])
 
 
-def get_doctors_from_sheet() -> list[str]:
-    worksheet = spreadsheet.get_worksheet(4)
-    rows = worksheet.get_all_values()[1:]
-    return [row[0].strip() for row in rows if row and row[0].strip()]

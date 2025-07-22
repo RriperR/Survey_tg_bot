@@ -1,7 +1,13 @@
-from sqlalchemy import select, update
+from sqlalchemy import select, update, delete
 
 from database.models import async_session
-from database.models import Worker, Pair, Survey, Answer, Shift
+from database.models import (
+    Worker,
+    Pair,
+    Survey,
+    Answer,
+    Shift,
+)
 
 
 async def get_worker_by_fullname(full_name: str) -> Worker | None:
@@ -167,35 +173,52 @@ async def get_in_progress_pairs() -> list[Pair]:
         return result.scalars().all()
 
 
-async def add_shift(assistant_id: int, doctor_name: str,
+async def add_shift(assistant_id: int, assistant_name: str, doctor_name: str,
                     shift_type: str, date: str) -> bool:
     async with async_session() as session:
-        existing = await session.execute(
-            select(Shift).where(
-                Shift.assistant_id == assistant_id,
-                Shift.date == date,
-                Shift.type == shift_type,
-            )
-        )
-        if existing.scalar_one_or_none():
-            return False
-
-        existing = await session.execute(
+        result = await session.execute(
             select(Shift).where(
                 Shift.doctor_name == doctor_name,
                 Shift.date == date,
                 Shift.type == shift_type,
             )
         )
-        if existing.scalar_one_or_none():
+        shift = result.scalar_one_or_none()
+        if not shift or shift.assistant_id is not None:
             return False
 
-        shift = Shift(
-            assistant_id=assistant_id,
-            doctor_name=doctor_name,
-            date=date,
-            type=shift_type,
-        )
-        session.add(shift)
+        shift.assistant_id = assistant_id
+        shift.assistant_name = assistant_name
         await session.commit()
         return True
+
+
+async def clear_shifts() -> None:
+    async with async_session() as session:
+        await session.execute(delete(Shift))
+        await session.commit()
+
+
+async def bulk_insert_shifts(records: list[tuple[str, str, str]]) -> None:
+    async with async_session() as session:
+        for doctor_name, date, shift_type in records:
+            session.add(
+                Shift(
+                    doctor_name=doctor_name,
+                    date=date,
+                    type=shift_type,
+                )
+            )
+        await session.commit()
+
+
+async def get_free_doctors(date: str, shift_type: str) -> list[str]:
+    async with async_session() as session:
+        result = await session.execute(
+            select(Shift.doctor_name).where(
+                Shift.date == date,
+                Shift.type == shift_type,
+                Shift.assistant_id.is_(None),
+            )
+        )
+        return [row[0] for row in result.all()]
