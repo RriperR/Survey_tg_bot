@@ -193,5 +193,3 @@ async def export_answers_to_google_sheet() -> None:
             ans.question5, ans.answer5
         ]
         worksheet4.append_row([str(cell) if cell is not None else "" for cell in row])
-
-

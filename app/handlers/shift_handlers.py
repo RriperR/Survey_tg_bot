@@ -66,8 +66,10 @@ async def mark_shift(callback: CallbackQuery):
     )
     if success:
         await callback.message.edit_text(
-            f"Смена {shift_type} для {doctor_name} отмечена"
+            f"✅ Смена {shift_type} для {doctor_name} отмечена"
         )
     else:
-        await callback.message.edit_text("Смена уже была отмечена")
+        await callback.message.edit_text(
+            "❌ Вы уже записаны у другого врача или выбранный слот занят"
+        )
     await callback.answer()

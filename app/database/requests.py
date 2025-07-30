@@ -173,9 +173,27 @@ async def get_in_progress_pairs() -> list[Pair]:
         return result.scalars().all()
 
 
-async def add_shift(assistant_id: int, assistant_name: str, doctor_name: str,
-                    shift_type: str, date: str) -> bool:
+async def add_shift(
+    assistant_id: int,
+    assistant_name: str,
+    doctor_name: str,
+    shift_type: str,
+    date: str
+) -> bool:
     async with async_session() as session:
+        # ✅ Проверяем, не записан ли этот ассистент уже на эту смену (дата+тип)
+        already_stmt = select(Shift).where(
+            Shift.assistant_id == assistant_id,
+            Shift.date == date,
+            Shift.type == shift_type
+        )
+        already_result = await session.execute(already_stmt)
+        already_shift = already_result.scalar_one_or_none()
+        if already_shift:
+            # Он уже записан на эту смену у другого врача
+            return False
+
+        # ✅ Ищем свободный слот у выбранного врача
         result = await session.execute(
             select(Shift).where(
                 Shift.doctor_name == doctor_name,
@@ -185,8 +203,9 @@ async def add_shift(assistant_id: int, assistant_name: str, doctor_name: str,
         )
         shift = result.scalar_one_or_none()
         if not shift or shift.assistant_id is not None:
-            return False
+            return False  # либо нет такого слота, либо уже занят
 
+        # ✅ Записываем ассистента на смену
         shift.assistant_id = assistant_id
         shift.assistant_name = assistant_name
         await session.commit()
