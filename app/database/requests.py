@@ -41,6 +41,12 @@ async def get_unregistered_workers() -> list[Worker]:
         return workers
 
 
+async def get_all_workers() -> list[Worker]:
+    async with async_session() as session:
+        result = await session.execute(select(Worker))
+        return result.scalars().all()
+
+
 async def set_chat_id(worker_id: int, chat_id: str) -> bool:
     async with async_session() as session:
         # Проверка: не используется ли chat_id уже
@@ -208,6 +214,7 @@ async def add_shift(
         # ✅ Записываем ассистента на смену
         shift.assistant_id = assistant_id
         shift.assistant_name = assistant_name
+        shift.manual = False
         await session.commit()
         return True
 
@@ -226,6 +233,7 @@ async def bulk_insert_shifts(records: list[tuple[str, str, str]]) -> None:
                     doctor_name=doctor_name,
                     date=date,
                     type=shift_type,
+                    manual=False,
                 )
             )
         await session.commit()
@@ -241,3 +249,63 @@ async def get_free_doctors(date: str, shift_type: str) -> list[str]:
             )
         )
         return [row[0] for row in result.all()]
+
+
+async def get_assistant_shift(
+    assistant_id: int, date: str, shift_type: str
+) -> Shift | None:
+    async with async_session() as session:
+        result = await session.execute(
+            select(Shift).where(
+                Shift.assistant_id == assistant_id,
+                Shift.date == date,
+                Shift.type == shift_type,
+            )
+        )
+        return result.scalar_one_or_none()
+
+
+async def remove_shift(assistant_id: int, date: str, shift_type: str) -> None:
+    async with async_session() as session:
+        stmt = (
+            update(Shift)
+            .where(
+                Shift.assistant_id == assistant_id,
+                Shift.date == date,
+                Shift.type == shift_type,
+            )
+            .values(assistant_id=None, assistant_name=None)
+        )
+        await session.execute(stmt)
+        await session.commit()
+
+
+async def add_manual_shift(
+    assistant_id: int,
+    assistant_name: str,
+    doctor_name: str,
+    shift_type: str,
+    date: str,
+) -> bool:
+    async with async_session() as session:
+        already = await session.execute(
+            select(Shift).where(
+                Shift.assistant_id == assistant_id,
+                Shift.date == date,
+                Shift.type == shift_type,
+            )
+        )
+        if already.scalar_one_or_none():
+            return False
+
+        shift = Shift(
+            assistant_id=assistant_id,
+            assistant_name=assistant_name,
+            doctor_name=doctor_name,
+            type=shift_type,
+            date=date,
+            manual=True,
+        )
+        session.add(shift)
+        await session.commit()
+        return True

@@ -2,7 +2,7 @@ import os
 
 from dotenv import load_dotenv
 
-from sqlalchemy import BigInteger, String, Text, Column
+from sqlalchemy import BigInteger, String, Text, Column, Boolean
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
 from sqlalchemy.ext.asyncio import AsyncAttrs, async_sessionmaker, create_async_engine
 
@@ -90,6 +90,7 @@ class Shift(Base):
     date = Column(String(31))
     type = Column(String(10))
     assistant_name = Column(Text, nullable=True)
+    manual = Column(Boolean, default=False)
 
 
 async def async_main():
