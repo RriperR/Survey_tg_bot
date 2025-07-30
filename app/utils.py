@@ -3,6 +3,8 @@ from datetime import datetime
 
 import gspread
 
+from aiogram.filters.callback_data import CallbackData
+
 from sqlalchemy import delete, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from oauth2client.service_account import ServiceAccountCredentials
@@ -193,3 +195,10 @@ async def export_answers_to_google_sheet() -> None:
             ans.question5, ans.answer5
         ]
         worksheet4.append_row([str(cell) if cell is not None else "" for cell in row])
+
+
+class SelectDoctor(CallbackData, prefix="msd"):
+    doctor_id: int
+
+class DoctorsPage(CallbackData, prefix="dpg"):
+    page: int

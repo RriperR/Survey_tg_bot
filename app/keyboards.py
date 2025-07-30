@@ -2,6 +2,7 @@ from datetime import datetime
 from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
 from aiogram.utils.keyboard import InlineKeyboardBuilder
 
+from utils import SelectDoctor, DoctorsPage
 from database.requests import get_unregistered_workers, get_all_workers
 
 
@@ -67,15 +68,35 @@ async def build_doctors_keyboard(doctors: list[str]) -> InlineKeyboardMarkup:
     return builder.as_markup()
 
 
-async def build_all_doctors_keyboard() -> InlineKeyboardMarkup:
-    workers = await get_all_workers()
+PER_PAGE = 10
+
+# --- Клавиатура со списком врачей (пагинация) ---
+async def build_all_doctors_keyboard(page: int = 0) -> InlineKeyboardMarkup:
+    workers = await get_all_workers()  # -> list[Worker] (Worker имеет id и full_name)
+    total = len(workers)
+    start = page * PER_PAGE
+    end = min(start + PER_PAGE, total)
+
     builder = InlineKeyboardBuilder()
-    for worker in workers:
+
+    # Кнопки врачей: короткий callback_data с id
+    for w in workers[start:end]:
         builder.button(
-            text=worker.full_name,
-            callback_data=f"manual_select_doctor:{worker.full_name}"
+            text=w.full_name[:64],  # на всякий случай ограничим текст кнопки
+            callback_data=SelectDoctor(doctor_id=w.id).pack()
         )
-    builder.adjust(1)
+
+    # Навигация
+    nav = InlineKeyboardBuilder()
+    if start > 0:
+        nav.button(text="◀️ Назад", callback_data=DoctorsPage(page=page-1).pack())
+    if end < total:
+        nav.button(text="Вперёд ▶️", callback_data=DoctorsPage(page=page+1).pack())
+
+    builder.adjust(1)  # по одной кнопке в ряд
+    if nav.buttons:
+        builder.row(*nav.buttons)  # ряд с навигацией
+
     return builder.as_markup()
 
 

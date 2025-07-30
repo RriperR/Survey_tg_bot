@@ -12,6 +12,8 @@ from keyboards import (
 )
 from logger import setup_logger
 
+from utils import DoctorsPage, SelectDoctor
+
 router = Router()
 
 logger = setup_logger("shift", "shift.log")
@@ -106,6 +108,7 @@ async def cancel_shift(callback: CallbackQuery):
 
 @router.message(Command("shift_any"))
 async def manual_shift(message: Message):
+    from datetime import datetime
     now = datetime.now()
     hour = now.hour
     if 8 <= hour < 14:
@@ -117,6 +120,7 @@ async def manual_shift(message: Message):
         return
 
     date_str = now.strftime("%d.%m.%Y")
+
     worker = await rq.get_worker_by_chat_id(message.from_user.id)
     if not worker:
         await message.answer("Вы не зарегистрированы")
@@ -132,13 +136,20 @@ async def manual_shift(message: Message):
 
     await message.answer(
         "Выберите врача:",
-        reply_markup=await build_all_doctors_keyboard(),
+        reply_markup=await build_all_doctors_keyboard(page=0),
     )
 
+# --- Хендлеры пагинации и выбора врача ---
+@router.callback_query(DoctorsPage.filter())
+async def doctors_paginate(cb: CallbackQuery, callback_data: DoctorsPage):
+    await cb.message.edit_reply_markup(
+        reply_markup=await build_all_doctors_keyboard(page=callback_data.page)
+    )
+    await cb.answer()
 
-@router.callback_query(F.data.startswith("manual_select_doctor:"))
-async def mark_manual(callback: CallbackQuery):
-    doctor_name = callback.data.split(":", 1)[1]
+
+@router.callback_query(SelectDoctor.filter())
+async def doctor_selected(cb: CallbackQuery, callback_data: SelectDoctor):
     now = datetime.now()
     hour = now.hour
     if 8 <= hour < 14:
@@ -146,28 +157,30 @@ async def mark_manual(callback: CallbackQuery):
     elif 14 <= hour < 20:
         shift_type = "evening"
     else:
-        await callback.answer("Отмечать смену можно с 8 до 20", show_alert=True)
+        await cb.answer("Отмечать смену можно с 8 до 20", show_alert=True)
         return
 
-    worker = await rq.get_worker_by_chat_id(callback.from_user.id)
+    worker = await rq.get_worker_by_chat_id(cb.from_user.id)
     if not worker:
-        await callback.answer("Вы не зарегистрированы", show_alert=True)
+        await cb.answer("Вы не зарегистрированы", show_alert=True)
         return
 
     date_str = now.strftime("%d.%m.%Y")
+    doctor = await rq.get_worker_by_id(callback_data.doctor_id)
+    if not doctor:
+        await cb.answer("Врач не найден", show_alert=True)
+        return
+
     success = await rq.add_manual_shift(
         worker.id,
         worker.full_name,
-        doctor_name,
+        doctor.full_name,  # фиксируем имя из БД
         shift_type,
         date_str,
     )
+
     if success:
-        await callback.message.edit_text(
-            f"✅ Смена {shift_type} для {doctor_name} отмечена (вручную)"
-        )
+        await cb.message.edit_text(f"✅ Смена {shift_type} для {doctor.full_name} отмечена (вручную)")
     else:
-        await callback.message.edit_text(
-            "❌ Вы уже записаны на эту смену"
-        )
-    await callback.answer()
+        await cb.message.edit_text("❌ Вы уже записаны на эту смену")
+    await cb.answer()
