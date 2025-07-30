@@ -17,7 +17,7 @@ from services.survey_scheduler import send_surveys
 from utils import (
     update_pairs_from_sheet,
     export_answers_to_google_sheet,
-    update_shifts_from_sheet,
+    update_shifts_from_sheet, export_shifts_to_google_sheet,
 )
 from logger import setup_logger
 
@@ -43,9 +43,9 @@ async def main():
     scheduler.add_job(update_shifts_from_sheet, 'cron', hour=6, minute=0)
     scheduler.add_job(send_surveys, 'cron', hour=20, minute=0, args=[bot, dp])
     scheduler.add_job(export_answers_to_google_sheet, 'cron', day_of_week='sun', hour=23, minute=0)
+    scheduler.add_job(export_shifts_to_google_sheet, 'cron', day_of_week='sun', hour=23, minute=5)
     scheduler.add_job(send_monthly_reports, 'cron', day=1, hour=16, minute=38, args=[bot])
     scheduler.start()
-
     logger.info(f"Scheduler started with jobs: {scheduler.get_jobs()}")
 
     await dp.start_polling(bot)

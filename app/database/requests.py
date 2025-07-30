@@ -169,6 +169,12 @@ async def get_all_answers() -> list[Answer]:
         result = await session.execute(select(Answer))
         return result.scalars().all()
 
+async def get_all_shifts() -> list[Answer]:
+    async with async_session() as session:
+        result = await session.execute(select(Shift))
+        return result.scalars().all()
+
+
 async def get_in_progress_pairs() -> list[Pair]:
     """
     Все пары, которые находятся в процессе заполнения.

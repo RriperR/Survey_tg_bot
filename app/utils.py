@@ -13,7 +13,7 @@ from database.models import async_session, Worker, Pair, Survey
 from database.requests import (
     get_all_answers,
     clear_shifts,
-    bulk_insert_shifts,
+    bulk_insert_shifts, get_all_shifts,
 )
 
 
@@ -129,7 +129,7 @@ async def update_surveys_from_sheet() -> None:
 
 
 async def update_shifts_from_sheet() -> None:
-    worksheet = spreadsheet.get_worksheet(4)
+    worksheet = spreadsheet.get_worksheet(3)
     rows = worksheet.get_all_values()[1:]
     schedule: list[tuple[str, str, str]] = []
     for row in rows:
@@ -168,7 +168,7 @@ async def export_answers_to_google_sheet() -> None:
     # Получаем все записи из таблицы Answer
     answers = await get_all_answers()
 
-    worksheet4 = spreadsheet.get_worksheet(3)
+    worksheet4 = spreadsheet.get_worksheet(4)
 
     # Очищаем гугл таблицу
     worksheet4.clear()
@@ -195,6 +195,35 @@ async def export_answers_to_google_sheet() -> None:
             ans.question5, ans.answer5
         ]
         worksheet4.append_row([str(cell) if cell is not None else "" for cell in row])
+
+
+async def export_shifts_to_google_sheet() -> None:
+    # Получаем все смены из БД
+    shifts = await get_all_shifts()  # функция аналогичная get_all_answers()
+
+    worksheet5 = spreadsheet.get_worksheet(5)  # например, 5-й лист (индекс 4)
+
+    # Очищаем таблицу
+    worksheet5.clear()
+
+    # Заголовки
+    headers = [
+        "assistant_id", "assistant_name",
+        "doctor_name", "date", "type", "manual"
+    ]
+    worksheet5.append_row(headers)
+
+    # Заполняем данными
+    for shift in shifts:
+        row = [
+            shift.assistant_id,
+            shift.assistant_name or "",
+            shift.doctor_name,
+            shift.date,
+            shift.type,
+            "Да" if shift.manual else "Нет"
+        ]
+        worksheet5.append_row([str(cell) if cell is not None else "" for cell in row])
 
 
 class SelectDoctor(CallbackData, prefix="msd"):

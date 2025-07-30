@@ -85,7 +85,7 @@ async def mark_shift(callback: CallbackQuery):
     )
     if success:
         await callback.message.edit_text(
-            f"✅ Смена {shift_type} для {doctor_name} отмечена"
+            f"✅ Смена {shift_type} с {doctor_name} отмечена"
         )
     else:
         await callback.message.edit_text(
@@ -180,7 +180,7 @@ async def doctor_selected(cb: CallbackQuery, callback_data: SelectDoctor):
     )
 
     if success:
-        await cb.message.edit_text(f"✅ Смена {shift_type} для {doctor.full_name} отмечена (вручную)")
+        await cb.message.edit_text(f"✅ Смена {shift_type} с {doctor.full_name} отмечена (вручную)")
     else:
         await cb.message.edit_text("❌ Вы уже записаны на эту смену")
     await cb.answer()
