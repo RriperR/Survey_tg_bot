@@ -2,7 +2,7 @@ from datetime import datetime
 from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
 from aiogram.utils.keyboard import InlineKeyboardBuilder
 
-from database.requests import get_unregistered_workers
+from database.requests import get_unregistered_workers, get_all_workers
 
 
 async def build_worker_keyboard() -> InlineKeyboardMarkup:
@@ -63,5 +63,27 @@ async def build_doctors_keyboard(doctors: list[str]) -> InlineKeyboardMarkup:
             text=doc,
             callback_data=f"select_doctor:{doc}"
         )
+    builder.adjust(1)
+    return builder.as_markup()
+
+
+async def build_all_doctors_keyboard() -> InlineKeyboardMarkup:
+    workers = await get_all_workers()
+    builder = InlineKeyboardBuilder()
+    for worker in workers:
+        builder.button(
+            text=worker.full_name,
+            callback_data=f"manual_select_doctor:{worker.full_name}"
+        )
+    builder.adjust(1)
+    return builder.as_markup()
+
+
+def build_cancel_shift_keyboard(shift_type: str) -> InlineKeyboardMarkup:
+    builder = InlineKeyboardBuilder()
+    builder.button(
+        text="Отменить запись",
+        callback_data=f"cancel_shift:{shift_type}"
+    )
     builder.adjust(1)
     return builder.as_markup()
