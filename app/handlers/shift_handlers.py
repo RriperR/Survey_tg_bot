@@ -19,15 +19,19 @@ router = Router()
 logger = setup_logger("shift", "shift.log")
 
 
+def get_shift_type(hour):
+    if 8 <= hour < 14:
+        return "morning"
+    elif 14 <= hour < 20:
+        return "evening"
+    return None
+
+
 @router.message(Command("shift"))
 async def show_doctors(message: Message):
     now = datetime.now()
-    hour = now.hour
-    if 8 <= hour < 14:
-        shift_type = "morning"
-    elif 14 <= hour < 20:
-        shift_type = "evening"
-    else:
+    shift_type = get_shift_type(now.hour)
+    if not shift_type:
         await message.answer("Отмечаться можно с 8 до 20")
         return
 
@@ -59,12 +63,8 @@ async def show_doctors(message: Message):
 async def mark_shift(callback: CallbackQuery):
     doctor_name = callback.data.split(":", 1)[1]
     now = datetime.now()
-    hour = now.hour
-    if 8 <= hour < 14:
-        shift_type = "morning"
-    elif 14 <= hour < 20:
-        shift_type = "evening"
-    else:
+    shift_type = get_shift_type(now.hour)
+    if not shift_type:
         await callback.answer(
             "Отмечать смену можно с 8 до 20", show_alert=True
         )
@@ -108,14 +108,9 @@ async def cancel_shift(callback: CallbackQuery):
 
 @router.message(Command("shift_any"))
 async def manual_shift(message: Message):
-    from datetime import datetime
     now = datetime.now()
-    hour = now.hour
-    if 8 <= hour < 14:
-        shift_type = "morning"
-    elif 14 <= hour < 20:
-        shift_type = "evening"
-    else:
+    shift_type = get_shift_type(now.hour)
+    if not shift_type:
         await message.answer("Отмечаться можно с 8 до 20")
         return
 
@@ -151,12 +146,8 @@ async def doctors_paginate(cb: CallbackQuery, callback_data: DoctorsPage):
 @router.callback_query(SelectDoctor.filter())
 async def doctor_selected(cb: CallbackQuery, callback_data: SelectDoctor):
     now = datetime.now()
-    hour = now.hour
-    if 8 <= hour < 14:
-        shift_type = "morning"
-    elif 14 <= hour < 20:
-        shift_type = "evening"
-    else:
+    shift_type = get_shift_type(now.hour)
+    if not shift_type:
         await cb.answer("Отмечать смену можно с 8 до 20", show_alert=True)
         return
 
