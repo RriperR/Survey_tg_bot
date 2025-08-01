@@ -18,7 +18,9 @@ def parse_russian_date(date_str: str) -> datetime | None:
         return None
 
 
-async def _collect_survey_cache(session, all_answers: list[Answer]) -> dict[str, Survey]:
+async def _collect_survey_cache(
+    session, all_answers: list[Answer]
+) -> dict[str, Survey]:
     survey_names = set(ans.survey for ans in all_answers)
     surveys_by_name = {}
     for name in survey_names:
@@ -101,7 +103,6 @@ def _calculate_scores_for_worker(
 
 
 def _format_report_text(
-    worker_name: str,
     results: dict[str, dict[str, dict[str, list[int]]]],
     open_answers: dict[str, list[str]],
     shifts_info: dict[str, int] | None = None,
@@ -187,21 +188,22 @@ async def send_monthly_reports(bot: Bot):
         skipped_count = 0
 
         for worker in workers:
-            worker_answers = answers_by_object.get(worker.full_name)
-            if not worker_answers:
+            worker_answers = answers_by_object.get(worker.full_name, [])
+            worker_shifts = shifts_by_assistant.get(worker.id)
+
+            if not worker_answers and not worker_shifts:
                 skipped_count += 1
-                logger.debug(f"Пропущен сотрудник без оценок: {worker.full_name}")
+                logger.debug(
+                    f"Пропущен сотрудник без данных: {worker.full_name}"
+                )
                 continue
 
             results, open_answers = _calculate_scores_for_worker(
                 worker_answers, surveys_by_name, now
             )
 
-            worker_shifts = shifts_by_assistant.get(worker.id)
-
             try:
                 messages = _format_report_text(
-                    worker.full_name,
                     results,
                     open_answers,
                     worker_shifts,
