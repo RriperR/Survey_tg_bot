@@ -6,7 +6,7 @@ from aiogram import Bot
 
 from sqlalchemy import select
 
-from database.models import async_session, Answer, Worker, Survey
+from database.models import async_session, Answer, Worker, Survey, Shift
 from logger import setup_logger
 
 logger = setup_logger("reports", "reports.log")
@@ -33,6 +33,20 @@ def _group_answers_by_object(all_answers: list[Answer]) -> dict[str, list[Answer
     for ans in all_answers:
         grouped[ans.object].append(ans)
     return grouped
+
+
+def _group_shifts_last_month(all_shifts: list[Shift], now: datetime) -> dict[int, dict[str, int]]:
+    """Return mapping assistant_id -> {doctor_name: count} for last month."""
+    one_month_ago = now - timedelta(days=30)
+    result: dict[int, dict[str, int]] = defaultdict(lambda: defaultdict(int))
+    for shift in all_shifts:
+        if shift.assistant_id is None:
+            continue
+        shift_date = parse_russian_date(shift.date)
+        if not shift_date or shift_date < one_month_ago:
+            continue
+        result[shift.assistant_id][shift.doctor_name] += 1
+    return result
 
 
 def _calculate_scores_for_worker(
@@ -89,7 +103,8 @@ def _calculate_scores_for_worker(
 def _format_report_text(
     worker_name: str,
     results: dict[str, dict[str, dict[str, list[int]]]],
-    open_answers: dict[str, list[str]]
+    open_answers: dict[str, list[str]],
+    shifts_info: dict[str, int] | None = None,
 ) -> list[str]:
     messages: list[str] = []
     period_values_seen = set()
@@ -98,9 +113,17 @@ def _format_report_text(
         serialized = str(sorted((survey, question, sorted(scores))
                                  for survey, questions in surveys.items()
                                  for question, scores in questions.items()))
-        if serialized in period_values_seen or not surveys:
+
+        has_scores = bool(surveys)
+        has_month_extras = period_name == "Месяц" and (
+            open_answers or shifts_info
+        )
+        if not has_scores and not has_month_extras:
             continue
-        period_values_seen.add(serialized)
+        if has_scores and serialized in period_values_seen:
+            continue
+        if has_scores:
+            period_values_seen.add(serialized)
 
         text = f"📊 Результаты за 📅 *{period_name}:*\n\n"
 
@@ -125,6 +148,11 @@ def _format_report_text(
                         text += f"    - {a}\n"
                     text += "\n"
 
+        if period_name == "Месяц" and shifts_info:
+            text += "\n🩺 *Смены за последний месяц:*\n"
+            for doctor, count in shifts_info.items():
+                text += f"• {doctor} — {count} раз(а)\n"
+
         messages.append(text.strip())
 
     return messages
@@ -145,10 +173,15 @@ async def send_monthly_reports(bot: Bot):
         all_answers = answers_result.scalars().all()
         logger.info(f"Найдено ответов: {len(all_answers)}")
 
+        shifts_result = await session.execute(select(Shift))
+        all_shifts = shifts_result.scalars().all()
+        logger.info(f"Найдено смен: {len(all_shifts)}")
+
         surveys_by_name = await _collect_survey_cache(session, all_answers)
         logger.info(f"Кэшировано опросов: {len(surveys_by_name)}")
 
         answers_by_object = _group_answers_by_object(all_answers)
+        shifts_by_assistant = _group_shifts_last_month(all_shifts, now)
 
         sent_count = 0
         skipped_count = 0
@@ -163,16 +196,26 @@ async def send_monthly_reports(bot: Bot):
             results, open_answers = _calculate_scores_for_worker(
                 worker_answers, surveys_by_name, now
             )
-            text = _format_report_text(worker.full_name, results, open_answers)
+
+            worker_shifts = shifts_by_assistant.get(worker.id)
 
             try:
-                messages = _format_report_text(worker.full_name, results, open_answers)
+                messages = _format_report_text(
+                    worker.full_name,
+                    results,
+                    open_answers,
+                    worker_shifts,
+                )
                 for message in messages:
                     await safe_send_long_message(bot, worker.chat_id, message)
-                logger.info(f"✅ Отчёт отправлен: {worker.full_name} ({worker.chat_id})")
+                logger.info(
+                    f"✅ Отчёт отправлен: {worker.full_name} ({worker.chat_id})"
+                )
                 sent_count += 1
             except Exception as e:
-                logger.error(f"❌ Ошибка при отправке {worker.full_name} ({worker.chat_id}): {e}")
+                logger.error(
+                    f"❌ Ошибка при отправке {worker.full_name} ({worker.chat_id}): {e}"
+                )
 
         logger.info(f"📊 Рассылка завершена. Отправлено: {sent_count}, пропущено: {skipped_count}")
 
