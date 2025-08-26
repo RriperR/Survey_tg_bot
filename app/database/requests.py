@@ -245,16 +245,21 @@ async def bulk_insert_shifts(records: list[tuple[str, str, str]]) -> None:
         await session.commit()
 
 
-async def get_free_doctors(date: str, shift_type: str) -> list[str]:
+async def get_free_doctors(date: str, shift_type: str) -> list[tuple[int, str]]:
     async with async_session() as session:
         result = await session.execute(
-            select(Shift.doctor_name).where(
+            select(Shift.id, Shift.doctor_name).where(
                 Shift.date == date,
                 Shift.type == shift_type,
                 Shift.assistant_id.is_(None),
             )
         )
-        return [row[0] for row in result.all()]
+        return [(row.id, row.doctor_name) for row in result.all()]
+
+
+async def get_shift_by_id(shift_id: int) -> Shift | None:
+    async with async_session() as session:
+        return await session.get(Shift, shift_id)
 
 
 async def get_assistant_shift(
@@ -284,6 +289,31 @@ async def remove_shift(assistant_id: int, date: str, shift_type: str) -> None:
         )
         await session.execute(stmt)
         await session.commit()
+
+
+async def add_shift_by_id(
+    assistant_id: int, assistant_name: str, shift_id: int
+) -> bool:
+    async with async_session() as session:
+        shift = await session.get(Shift, shift_id)
+        if not shift or shift.assistant_id is not None:
+            return False
+
+        already_stmt = await session.execute(
+            select(Shift).where(
+                Shift.assistant_id == assistant_id,
+                Shift.date == shift.date,
+                Shift.type == shift.type,
+            )
+        )
+        if already_stmt.scalar_one_or_none():
+            return False
+
+        shift.assistant_id = assistant_id
+        shift.assistant_name = assistant_name
+        shift.manual = False
+        await session.commit()
+        return True
 
 
 async def add_manual_shift(

@@ -6,7 +6,7 @@ from aiogram.types import Message, CallbackQuery
 
 import database.requests as rq
 from keyboards import (
-    build_doctors_keyboard,
+    build_shift_keyboard,
     build_all_doctors_keyboard,
     build_cancel_shift_keyboard,
 )
@@ -49,19 +49,19 @@ async def show_doctors(message: Message):
         )
         return
 
-    doctor_names = await rq.get_free_doctors(date_str, shift_type)
-    if not doctor_names:
-        await message.answer("Список врачей пуст")
+    free_shifts = await rq.get_free_doctors(date_str, shift_type)
+    if not free_shifts:
+        await message.answer("Список смен пуст")
         return
     await message.answer(
-        "Выберите врача:",
-        reply_markup=await build_doctors_keyboard(doctor_names)
+        "Выберите смену:",
+        reply_markup=await build_shift_keyboard(free_shifts)
     )
 
 
-@router.callback_query(F.data.startswith("select_doctor:"))
+@router.callback_query(F.data.startswith("select_shift:"))
 async def mark_shift(callback: CallbackQuery):
-    doctor_name = callback.data.split(":", 1)[1]
+    shift_id = int(callback.data.split(":", 1)[1])
     now = datetime.now()
     shift_type = get_shift_type(now.hour)
     if not shift_type:
@@ -76,16 +76,19 @@ async def mark_shift(callback: CallbackQuery):
         return
 
     date_str = now.strftime("%d.%m.%Y")
-    success = await rq.add_shift(
+    shift = await rq.get_shift_by_id(shift_id)
+    if not shift or shift.date != date_str or shift.type != shift_type:
+        await callback.answer("Слот недоступен", show_alert=True)
+        return
+
+    success = await rq.add_shift_by_id(
         worker.id,
         worker.full_name,
-        doctor_name,
-        shift_type,
-        date_str,
+        shift_id,
     )
     if success:
         await callback.message.edit_text(
-            f"✅ Смена {shift_type} с {doctor_name} отмечена"
+            f"✅ Смена {shift_type} с {shift.doctor_name} отмечена"
         )
     else:
         await callback.message.edit_text(
