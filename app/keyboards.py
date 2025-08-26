@@ -57,12 +57,12 @@ async def build_int_keyboard(question_index) -> InlineKeyboardMarkup:
     return builder.as_markup()
 
 
-async def build_doctors_keyboard(doctors: list[str]) -> InlineKeyboardMarkup:
+async def build_shift_keyboard(shifts: list[tuple[int, str]]) -> InlineKeyboardMarkup:
     builder = InlineKeyboardBuilder()
-    for doc in doctors:
+    for shift_id, name in shifts:
         builder.button(
-            text=doc,
-            callback_data=f"select_doctor:{doc}"
+            text=name,
+            callback_data=f"select_shift:{shift_id}"
         )
     builder.adjust(1)
     return builder.as_markup()
