@@ -142,7 +142,6 @@ async def update_shifts_from_sheet() -> None:
             continue
         schedule.append((doctor_name, date, shift_type))
 
-    await clear_shifts()
     if schedule:
         await bulk_insert_shifts(schedule)
     print("✅ Данные о сменах успешно загружены в базу данных.")
