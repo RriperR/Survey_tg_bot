@@ -345,3 +345,18 @@ async def add_manual_shift(
         session.add(shift)
         await session.commit()
         return True
+
+
+async def get_shifts_by_date(date: str) -> list[Shift]:
+    """Вернуть все смены за указанную дату (формат dd.mm.YYYY)."""
+    async with async_session() as session:
+        result = await session.execute(
+            select(Shift).where(Shift.date == date)
+        )
+        return result.scalars().all()
+
+
+async def clear_table(model) -> None:
+    async with async_session() as session:
+        await session.execute(delete(model))
+        await session.commit()

@@ -8,7 +8,7 @@ from utils import (
     update_pairs_from_sheet,
     update_workers_from_sheet,
     update_shifts_from_sheet,
-    export_answers_to_google_sheet,
+    export_answers_to_google_sheet, export_shifts_to_google_sheet,
 )
 
 router = Router()
@@ -54,3 +54,10 @@ async def export_data(message: Message):
     msg = await message.answer('⏳ Выгрузка...')
     await export_answers_to_google_sheet()
     await msg.edit_text('✅ Ответы успешно перенесены в Google Sheets.')
+
+
+@router.message(Command('exp_shifts'))
+async def export_shifts(message: Message):
+    msg = await message.answer('⏳ Выгрузка...')
+    await export_shifts_to_google_sheet()
+    await msg.edit_text("✅ Данные о сменах перенесены в Google Sheets.")

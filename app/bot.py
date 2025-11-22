@@ -36,7 +36,7 @@ async def main():
     dp.include_router(survey_router)
     dp.include_router(shift_router)
 
-    await reset_surveys_and_notify_users(bot)
+    # await reset_surveys_and_notify_users(bot)
 
     scheduler = AsyncIOScheduler()
     scheduler.add_job(update_pairs_from_sheet, 'cron', hour=19, minute=50)
