@@ -1,99 +1,91 @@
-import logging
-
-from aiogram import F, Router
+﻿from aiogram import F, Router
 from aiogram.filters import CommandStart
 from aiogram.types import Message, CallbackQuery
 
-import database.requests as rq
-import keyboards as kb
-from logger import setup_logger
+from app.application.use_cases.registration import RegistrationService
+import app.keyboards as kb
+from app.logger import setup_logger
 
-router = Router()
 
 logger = setup_logger("reg_handlers", "reg.log")
 
 
-@router.message(CommandStart())
-async def start(message: Message):
-    user = message.from_user
-    logger.info(
-        f"Пользователь (id={user.id}, username={user.username}) использовал '/start'"
-    )
-    await message.answer('Выберите своё ФИО, чтобы зарегистрироваться', reply_markup=await kb.build_worker_keyboard())
+def create_register_router(registration: RegistrationService) -> Router:
+    router = Router()
 
+    @router.message(CommandStart())
+    async def start(message: Message):
+        user = message.from_user
+        logger.info(
+            "User (id=%s, username=%s) triggered '/start'", user.id, user.username
+        )
+        await message.answer(
+            "Привет! Выбери себя в списке, чтобы зарегистрироваться:",
+            reply_markup=await kb.build_worker_keyboard(registration),
+        )
 
-@router.callback_query(F.data.startswith("select_worker:"))
-async def register_worker(callback: CallbackQuery):
-    worker_id = int(callback.data.split(":", 1)[1])
-    worker = await rq.get_worker_by_id(worker_id)
+    @router.callback_query(F.data.startswith("select_worker:"))
+    async def register_worker(callback: CallbackQuery):
+        worker_id = int(callback.data.split(":", 1)[1])
+        worker = await registration.get_by_id(worker_id)
 
-    logger.info(
-        f"Пользователь (id={callback.from_user.id}) выбрал {worker.full_name}"
-    )
+        logger.info("User (id=%s) chose %s", callback.from_user.id, worker.full_name)
 
-    await callback.message.edit_text(
-        f"Вы уверены, что хотите выбрать:\n<b>{worker.full_name}</b>?",
-        reply_markup=await kb.build_confirm_keyboard(worker_id),
-        parse_mode="HTML"
-    )
-    await callback.answer()
-
-
-@router.callback_query(F.data.startswith("confirm_yes:"))
-async def confirm_register(callback: CallbackQuery):
-    worker_id = int(callback.data.split(":", 1)[1])
-    success = await rq.set_chat_id(worker_id, str(callback.from_user.id))
-
-    if not success:
-        worker = await rq.get_worker_by_chat_id(callback.from_user.id)
         await callback.message.edit_text(
-            f"⚠️ Вы уже зарегистрированы как {worker.full_name}"
+            f"Это ты: {worker.full_name}?",
+            reply_markup=kb.build_confirm_keyboard(worker_id),
+            parse_mode="HTML",
         )
         await callback.answer()
-        logger.info(
-            f"Пользователь (id={callback.from_user.id}) уже зарегистрирован"
+
+    @router.callback_query(F.data.startswith("confirm_yes:"))
+    async def confirm_register(callback: CallbackQuery):
+        worker_id = int(callback.data.split(":", 1)[1])
+        success = await registration.set_chat_id(worker_id, str(callback.from_user.id))
+
+        if not success:
+            worker = await registration.get_by_chat_id(callback.from_user.id)
+            await callback.message.edit_text(
+                f"Этот аккаунт уже привязан к {worker.full_name}"
+            )
+            await callback.answer()
+            logger.info("User (id=%s) tried to relink account", callback.from_user.id)
+            return
+
+        await callback.message.edit_text(
+            "Готово! Теперь отправь фото бейджа, чтобы мы закрепили его за твоим профилем."
         )
-        return
+        await callback.answer()
 
-    await callback.message.edit_text("🎉 Регистрация прошла успешно! Вы можете отправить своё фото в любое время,"
-                                     " чтобы оно появлялось у других в опросах ")
-    await callback.answer()
+        logger.info("User (id=%s) linked account", callback.from_user.id)
 
-    logger.info(
-        f"Пользователь (id={callback.from_user.id}) успешно зарегистрировался"
-    )
+    @router.callback_query(F.data == "confirm_no")
+    async def cancel_register(callback: CallbackQuery):
+        await callback.message.edit_text(
+            "Хорошо, попробуй выбрать себя ещё раз:",
+            reply_markup=await kb.build_worker_keyboard(registration),
+        )
+        await callback.answer()
 
+        logger.info("User (id=%s) canceled worker selection", callback.from_user.id)
 
-@router.callback_query(F.data == "confirm_no")
-async def cancel_register(callback: CallbackQuery):
-    await callback.message.edit_text(
-        "Выберите своё ФИО, чтобы зарегистрироваться:",
-        reply_markup=await kb.build_worker_keyboard()
-    )
-    await callback.answer()
+    @router.message(F.photo)
+    async def handle_worker_photo(message: Message):
+        photo = message.photo[-1]
+        file_id = photo.file_id
 
-    logger.info(
-        f"Пользователь (id={callback.from_user.id} отменил выбор ФИО"
-    )
+        worker = await registration.get_by_chat_id(message.from_user.id)
 
+        if not worker:
+            await message.answer(
+                "Похоже, ты ещё не выбрал(а) себя. Вернись к /start и зарегистрируйся."
+            )
+            return
 
-@router.message(F.photo)
-async def handle_worker_photo(message: Message):
-    # Получаем последний (самый качественный) вариант фото
-    photo = message.photo[-1]
-    file_id = photo.file_id
+        try:
+            await registration.set_worker_photo(worker.id, file_id)
+            await message.answer("Фото сохранено. Спасибо!")
+        except Exception:
+            await message.answer("Не удалось сохранить фото, попробуй позже.")
 
-    # Получаем worker по chat_id
-    worker = await rq.get_worker_by_chat_id(message.from_user.id)
-
-    if not worker:
-        await message.answer("❗️ Вы ещё не зарегистрированы. Пожалуйста, сначала подтвердите свою личность.")
-        return
-
-    # Сохраняем file_id в БД
-    try:
-        await rq.set_worker_file_id(worker.id, file_id)
-        await message.answer("✅ Фото получено и сохранено. Спасибо!")
-
-    except:
-        await message.answer("❗️ Что-то пошло не так")
+    return router

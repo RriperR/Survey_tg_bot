@@ -1,0 +1,184 @@
+﻿from datetime import datetime
+
+from app.database.models import Worker, Pair, Survey
+from app.domain.repositories import (
+    WorkerRepository,
+    PairRepository,
+    SurveyRepository,
+    AnswerRepository,
+    ShiftRepository,
+)
+from app.infrastructure.sheets.gateway import SheetsGateway
+
+
+class AdminSyncService:
+    def __init__(
+        self,
+        gateway: SheetsGateway,
+        workers: WorkerRepository,
+        pairs: PairRepository,
+        surveys: SurveyRepository,
+        answers: AnswerRepository,
+        shifts: ShiftRepository,
+    ):
+        self.gateway = gateway
+        self.workers = workers
+        self.pairs = pairs
+        self.surveys = surveys
+        self.answers = answers
+        self.shifts = shifts
+
+    async def sync_workers(self) -> int:
+        existing = {w.full_name: w for w in await self.workers.list_all()}
+        rows = self.gateway.read_workers()
+        created = 0
+
+        for row in rows:
+            full_name = row[0].strip() if len(row) > 0 else ""
+            if not full_name:
+                continue
+            file_id = row[1].strip() if len(row) > 1 else ""
+            chat_id = row[2].strip() if len(row) > 2 else ""
+            speciality = row[3].strip() if len(row) > 3 else ""
+            phone = row[4].strip() if len(row) > 4 else ""
+
+            worker = existing.get(full_name)
+            if worker:
+                if chat_id and not worker.chat_id:
+                    await self.workers.set_chat_id(worker.id, chat_id)
+                if file_id and not worker.file_id:
+                    await self.workers.set_file_id(worker.id, file_id)
+                continue
+
+            new_worker = Worker(
+                full_name=full_name,
+                file_id=file_id,
+                chat_id=chat_id,
+                speciality=speciality,
+                phone=phone,
+            )
+            await self.workers.add(new_worker)
+            created += 1
+
+        return created
+
+    async def sync_pairs(self, today_str: str | None = None) -> int:
+        if not today_str:
+            today_str = datetime.now().strftime("%d.%m.%Y")
+        rows = self.gateway.read_pairs()
+        created = 0
+        for row in rows:
+            if len(row) < 5 or row[4].strip() != today_str:
+                continue
+            pair = Pair(
+                subject=row[0].strip(),
+                object=row[1].strip(),
+                survey=row[2].strip(),
+                weekday=row[3].strip(),
+                date=row[4].strip(),
+            )
+            await self.pairs.add(pair)
+            created += 1
+        return created
+
+    async def sync_surveys(self) -> int:
+        rows = self.gateway.read_surveys()
+        await self.surveys.clear_all()
+        created = 0
+        for row in rows:
+            id_value = row[0].strip() if row else ""
+            if not id_value.isdigit():
+                continue
+            survey = Survey(
+                id=int(id_value),
+                speciality=row[1].strip(),
+                question1=row[2].strip(),
+                question1_type=row[3].strip(),
+                question2=row[4].strip(),
+                question2_type=row[5].strip(),
+                question3=row[6].strip(),
+                question3_type=row[7].strip(),
+                question4=row[8].strip(),
+                question4_type=row[9].strip(),
+                question5=row[10].strip(),
+                question5_type=row[11].strip(),
+            )
+            await self.surveys.add(survey)
+            created += 1
+        return created
+
+    async def sync_shifts(self) -> int:
+        rows = self.gateway.read_shifts()
+        schedule: list[tuple[str, str, str]] = []
+        for row in rows:
+            if len(row) < 3:
+                continue
+            doctor_name = row[0].strip()
+            date = row[1].strip()
+            shift_type = row[2].strip()
+            if not doctor_name or not date or not shift_type:
+                continue
+            schedule.append((doctor_name, date, shift_type))
+        if schedule:
+            await self.shifts.bulk_insert(schedule)
+        return len(schedule)
+
+    async def sync_all(self) -> None:
+        await self.sync_workers()
+        await self.sync_pairs()
+        await self.sync_surveys()
+        await self.sync_shifts()
+
+    async def export_answers(self) -> None:
+        answers = await self.answers.list_all()
+        headers = [
+            "object",
+            "subject",
+            "survey",
+            "survey_date",
+            "completed_at",
+            "question1",
+            "answer1",
+            "question2",
+            "answer2",
+            "question3",
+            "answer3",
+            "question4",
+            "answer4",
+            "question5",
+            "answer5",
+        ]
+
+        def serialize():
+            for ans in answers:
+                row = [getattr(ans, f, "") for f in headers]
+                yield ["" if cell is None else str(cell) for cell in row]
+
+        self.gateway.export_answers(headers, serialize())
+
+    async def export_shifts(self, date_str: str | None = None) -> None:
+        if not date_str:
+            date_str = datetime.now().strftime("%d.%m.%Y")
+        shifts = await self.shifts.list_by_date(date_str)
+        headers = [
+            "assistant_id",
+            "assistant_name",
+            "doctor_name",
+            "date",
+            "type",
+            "manual",
+        ]
+
+        def serialize():
+            for shift in shifts:
+                row = [
+                    shift.assistant_id,
+                    shift.assistant_name or "",
+                    shift.doctor_name,
+                    shift.date,
+                    shift.type,
+                    "Да" if shift.manual else "Нет",
+                ]
+                yield ["" if v is None else str(v) for v in row]
+
+        self.gateway.export_shifts(headers, serialize())

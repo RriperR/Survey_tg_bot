@@ -1,4 +1,4 @@
-from datetime import datetime
+﻿from datetime import datetime
 
 from aiogram import Router, F, Bot, Dispatcher
 from aiogram.types import CallbackQuery, Message
@@ -6,48 +6,40 @@ from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import State, StatesGroup
 from aiogram.filters import StateFilter
 
-import database.requests as rq
-from database.models import Answer, Pair
-
-from keyboards import build_int_keyboard
-from logger import setup_logger
+from app.application.use_cases.survey_flow import SurveyFlowService
+from app.database.models import Pair
+from app.keyboards import build_int_keyboard
+from app.logger import setup_logger
 
 logger = setup_logger("actions", "actions.log")
 
-router = Router()
 
 class SurveyState(StatesGroup):
     answers = State()
 
 
-async def start_pair_survey(bot: Bot, chat_id: int, pair: Pair,
-                            state: FSMContext = None, dp: Dispatcher = None, file_id: str = None) -> None:
-    # 1. вступление
+async def start_pair_survey(
+    bot: Bot,
+    chat_id: int,
+    pair: Pair,
+    survey_service: SurveyFlowService,
+    state: FSMContext | None = None,
+    dp: Dispatcher | None = None,
+    file_id: str | None = None,
+) -> None:
+    intro = (
+        f"{pair.date} с вами работает: {pair.object}.\n"
+        f"Пожалуйста, оцените коллегу: {pair.survey}"
+    )
     if file_id:
-        await bot.send_photo(
-            chat_id=chat_id,
-            photo=file_id,
-            caption=(
-            f"{pair.date} с вами работал(-а): {pair.object}.\n"
-            f"Пожалуйста, пройдите опрос: {pair.survey}"
-            )
-        )
-
+        await bot.send_photo(chat_id=chat_id, photo=file_id, caption=intro)
     else:
-        await bot.send_message(
-            chat_id,
-            text=(
-                f"{pair.date} с вами работал(-а): {pair.object}.\n"
-                f"Пожалуйста, пройдите опрос: {pair.survey}"
-            )
-        )
+        await bot.send_message(chat_id, text=intro)
 
-    # 2. FSM
     if state is None:
         state = dp.fsm.get_context(bot, chat_id, chat_id)
 
-    survey = await rq.get_survey_by_name(pair.survey)
-
+    survey = await survey_service.get_survey(pair.survey)
     await state.update_data(survey=survey, pair=pair, answers=[])
 
     await ask_next_question(
@@ -59,132 +51,115 @@ async def start_pair_survey(bot: Bot, chat_id: int, pair: Pair,
 
 
 async def ask_next_question(bot, user_id: int, question_index: int, state: FSMContext) -> None:
-    # готовим текст и тип
     data = await state.get_data()
     survey = data.get("survey")
 
     q_text = getattr(survey, f"question{question_index}")
     q_type = getattr(survey, f"question{question_index}_type")
 
-
-    # отправляем вопрос
     if q_type == "int":
-        # inline‑кнопки 1–5
         await bot.send_message(chat_id=user_id, text=q_text, reply_markup=await build_int_keyboard(question_index))
     else:
-        # ждём текст
         await state.set_state(SurveyState.answers)
         await bot.send_message(chat_id=user_id, text=q_text)
 
 
-# Обработчик для рейтинговых вопросов (inline)
-@router.callback_query(F.data.startswith("rate:"))
-async def handle_rate(callback: CallbackQuery, state: FSMContext):
-    _, question_index, rate, timestamp = callback.data.split(":")
-    idx = int(question_index)
+def create_survey_router(survey_service: SurveyFlowService) -> Router:
+    router = Router()
 
-    created_time = datetime.fromtimestamp(int(timestamp))
-    now = datetime.now()
+    @router.callback_query(F.data.startswith("rate:"))
+    async def handle_rate(callback: CallbackQuery, state: FSMContext):
+        _, question_index, rate, timestamp = callback.data.split(":")
+        idx = int(question_index)
 
-    if (now - created_time).total_seconds() > 86400:  # 24 часа
-        await callback.message.edit_text(text="Сообщение устарело", reply_markup=None)
-        return
+        created_time = datetime.fromtimestamp(int(timestamp))
+        now = datetime.now()
 
-    # сохраняем ответ
-    data = await state.get_data()
-    answers: list = data.get("answers")
-    if idx > 1 and len(answers) == 0:
-        await callback.message.edit_text(text="Сообщение устарело", reply_markup=None)
-        return
+        if (now - created_time).total_seconds() > 86400:
+            await callback.message.edit_text(text="Время для ответа истекло", reply_markup=None)
+            return
 
-    answers.append(rate)
+        data = await state.get_data()
+        answers: list = data.get("answers")
+        if idx > 1 and len(answers) == 0:
+            await callback.message.edit_text(text="Время для ответа истекло", reply_markup=None)
+            return
 
-    await state.update_data(answers=answers)
+        answers.append(rate)
+        await state.update_data(answers=answers)
 
-    # отправим подтверждение (чтобы inline‑кнопка не крутилась)
-    await callback.answer(f"Вы выбрали: {rate}")
+        await callback.answer(f"Вы выбрали: {rate}")
 
-    pair = data.get("pair")
-    subject = pair.subject
+        pair = data.get("pair")
+        subject = pair.subject
 
-    user = callback.from_user
-    logger.info(
-        f"Пользователь {subject} (id={user.id}, username={user.username}) "
-        f"нажал кнопку с callback_data='{callback.data}'"
-    )
-
-    text = callback.message.text
-    text += f"\n\n Вы поставили оценку {rate}"
-
-    await callback.message.edit_text(text=text, reply_markup=None)
-
-
-    # переходим к следующему вопросу
-    await ask_next_question(bot=callback.bot, user_id=callback.from_user.id,
-                            question_index=idx+1,
-                            state=state)
-
-
-# Обработчик для текстовых вопросов
-@router.message(StateFilter(SurveyState.answers))
-async def handle_text_answer(message: Message, state: FSMContext):
-    data = await state.get_data()
-    answers: list = data.get("answers")
-    answers.append(message.text)
-    await state.update_data(answers=answers)
-
-    idx = len(answers)
-
-    pair: Pair = data.get("pair")
-    subject: str = pair.subject
-    user = message.from_user
-    logger.info(
-        f'Пользователь {subject} (id={user.id}, username={user.username}) '
-        f'ответил "{message.text}" на {idx} вопрос. id опроса: {pair.id}'
-    )
-
-
-    # следующий вопрос или завершение
-    if idx < 5:
-        await ask_next_question(bot=message.bot, user_id=message.from_user.id,
-                                question_index=idx+1, state=state)
-
-    else:
-        a1, a2, a3, a4, a5 = data.get("answers")
-        survey = data.get("survey")
-
-        ans = Answer(
-            subject=pair.subject,
-            object=pair.object,
-            survey=pair.survey,
-            survey_date=pair.date,
-            completed_at=str(datetime.now()),
-            question1=survey.question1,
-            answer1=a1,
-            question2=survey.question2,
-            answer2=a2,
-            question3=survey.question3,
-            answer3=a3,
-            question4=survey.question4,
-            answer4=a4,
-            question5=survey.question5,
-            answer5=a5,
+        user = callback.from_user
+        logger.info(
+            "User %s (id=%s, username=%s) answered via callback_data='%s'",
+            subject,
+            user.id,
+            user.username,
+            callback.data,
         )
 
-        try:
-            await rq.save_answer(ans)
-            # сохранён ответ ...
-            await rq.update_pair_status(pair.id, "done")  # 1. отмечаем завершение
-        except Exception as e:
-            logger.error(f"Ошибка завершения для опроса с id {pair.id}: {e}")
+        text = callback.message.text
+        text += f"\n\n Вы выбрали: {rate}"
 
-        await state.clear()
+        await callback.message.edit_text(text=text, reply_markup=None)
 
-        # 2. проверяем, есть ли ещё ready‑опросы для этого же subject
-        next_pair = await rq.get_next_ready_pair(pair.subject)
-        if next_pair:
-            await rq.update_pair_status(next_pair.id, "in_progress")
-            file_id = await rq.get_file_id_by_name(next_pair.object)
-            await start_pair_survey(message.bot, message.from_user.id, next_pair, state = state, file_id=file_id)
+        await ask_next_question(
+            bot=callback.bot, user_id=callback.from_user.id, question_index=idx + 1, state=state
+        )
+
+    @router.message(StateFilter(SurveyState.answers))
+    async def handle_text_answer(message: Message, state: FSMContext):
+        data = await state.get_data()
+        answers: list = data.get("answers")
+        answers.append(message.text)
+        await state.update_data(answers=answers)
+
+        idx = len(answers)
+
+        pair: Pair = data.get("pair")
+        subject: str = pair.subject
+        user = message.from_user
+        logger.info(
+            "User %s (id=%s, username=%s) answered '%s' to question %s. pair id: %s",
+            subject,
+            user.id,
+            user.username,
+            message.text,
+            idx,
+            pair.id,
+        )
+
+        if idx < 5:
+            await ask_next_question(
+                bot=message.bot, user_id=message.from_user.id, question_index=idx + 1, state=state
+            )
         else:
-            await message.answer("Спасибо, опросы на сегодня закончились!")
+            survey = data.get("survey")
+            try:
+                await survey_service.save_answers(pair, survey, data.get("answers"))
+                await survey_service.mark_pair_status(pair.id, "done")
+            except Exception as exc:
+                logger.error("Failed to save answers for pair %s: %s", pair.id, exc)
+
+            await state.clear()
+
+            next_pair = await survey_service.get_next_ready_pair(pair.subject)
+            if next_pair:
+                await survey_service.mark_pair_status(next_pair.id, "in_progress")
+                file_id = await survey_service.get_worker_file_id(next_pair.object)
+                await start_pair_survey(
+                    message.bot,
+                    message.from_user.id,
+                    next_pair,
+                    survey_service,
+                    state=state,
+                    file_id=file_id,
+                )
+            else:
+                await message.answer("Спасибо! На сегодня опросы закончились.")
+
+    return router
