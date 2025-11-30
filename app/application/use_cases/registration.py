@@ -1,5 +1,5 @@
+from app.domain.entities import Worker
 from app.domain.repositories import WorkerRepository
-from app.database.models import Worker
 
 
 class RegistrationService:

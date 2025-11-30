@@ -1,6 +1,6 @@
 ﻿from datetime import datetime
 
-from app.database.models import Worker, Pair, Survey
+from app.domain.entities import Worker, Pair, Survey
 from app.domain.repositories import (
     WorkerRepository,
     PairRepository,

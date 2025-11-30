@@ -1,6 +1,6 @@
 from typing import Protocol, Sequence
 
-from app.database.models import Worker, Pair, Survey, Answer, Shift
+from app.domain.entities import Worker, Pair, Survey, Answer, Shift
 
 
 class WorkerRepository(Protocol):

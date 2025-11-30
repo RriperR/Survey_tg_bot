@@ -6,7 +6,7 @@ from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
 from aiogram.utils.keyboard import InlineKeyboardBuilder
 
 from app.application.use_cases.registration import RegistrationService
-from app.database.models import Worker
+from app.domain.entities import Worker
 
 
 class SelectDoctor(CallbackData, prefix="msd"):

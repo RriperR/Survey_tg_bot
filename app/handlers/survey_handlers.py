@@ -7,7 +7,7 @@ from aiogram.fsm.state import State, StatesGroup
 from aiogram.filters import StateFilter
 
 from app.application.use_cases.survey_flow import SurveyFlowService
-from app.database.models import Pair
+from app.domain.entities import Pair
 from app.keyboards import build_int_keyboard
 from app.logger import setup_logger
 

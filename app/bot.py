@@ -5,7 +5,7 @@ from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from dotenv import load_dotenv
 
 from app.container import build_container
-from app.database.models import async_main
+from app.infrastructure.db.models import async_main
 from app.handlers.register_handlers import create_register_router
 from app.handlers.survey_handlers import create_survey_router
 from app.handlers.admin_handlers import create_admin_router
