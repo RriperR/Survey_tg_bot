@@ -1,5 +1,8 @@
 from app.domain.entities import (
     Answer as AnswerEntity,
+    Cabinet as CabinetEntity,
+    Instrument as InstrumentEntity,
+    InstrumentMove as InstrumentMoveEntity,
     Pair as PairEntity,
     Shift as ShiftEntity,
     Survey as SurveyEntity,
@@ -7,6 +10,9 @@ from app.domain.entities import (
 )
 from app.infrastructure.db.models import (
     Answer as AnswerModel,
+    Cabinet as CabinetModel,
+    Instrument as InstrumentModel,
+    InstrumentMove as InstrumentMoveModel,
     Pair as PairModel,
     Shift as ShiftModel,
     Survey as SurveyModel,
@@ -167,4 +173,66 @@ def from_shift_entity(entity: ShiftEntity) -> ShiftModel:
         type=entity.type,
         assistant_name=entity.assistant_name,
         manual=entity.manual,
+    )
+
+
+def to_cabinet_entity(model: CabinetModel | None) -> CabinetEntity | None:
+    if model is None:
+        return None
+    return CabinetEntity(
+        id=model.id,
+        name=model.name,
+    )
+
+
+def from_cabinet_entity(entity: CabinetEntity) -> CabinetModel:
+    return CabinetModel(
+        id=entity.id,
+        name=entity.name,
+    )
+
+
+def to_instrument_entity(model: InstrumentModel | None) -> InstrumentEntity | None:
+    if model is None:
+        return None
+    return InstrumentEntity(
+        id=model.id,
+        name=model.name,
+        cabinet_id=model.cabinet_id,
+    )
+
+
+def from_instrument_entity(entity: InstrumentEntity) -> InstrumentModel:
+    return InstrumentModel(
+        id=entity.id,
+        name=entity.name,
+        cabinet_id=entity.cabinet_id,
+    )
+
+
+def to_instrument_move_entity(model: InstrumentMoveModel | None) -> InstrumentMoveEntity | None:
+    if model is None:
+        return None
+    return InstrumentMoveEntity(
+        id=model.id,
+        instrument_id=model.instrument_id,
+        from_cabinet_id=model.from_cabinet_id,
+        to_cabinet_id=model.to_cabinet_id,
+        before_photo_id=model.before_photo_id,
+        after_photo_id=model.after_photo_id,
+        moved_by_chat_id=model.moved_by_chat_id,
+        moved_at=model.moved_at,
+    )
+
+
+def from_instrument_move_entity(entity: InstrumentMoveEntity) -> InstrumentMoveModel:
+    return InstrumentMoveModel(
+        id=entity.id,
+        instrument_id=entity.instrument_id,
+        from_cabinet_id=entity.from_cabinet_id,
+        to_cabinet_id=entity.to_cabinet_id,
+        before_photo_id=entity.before_photo_id,
+        after_photo_id=entity.after_photo_id,
+        moved_by_chat_id=entity.moved_by_chat_id,
+        moved_at=entity.moved_at,
     )

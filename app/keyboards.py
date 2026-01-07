@@ -6,7 +6,7 @@ from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
 from aiogram.utils.keyboard import InlineKeyboardBuilder
 
 from app.application.use_cases.registration import RegistrationService
-from app.domain.entities import Worker
+from app.domain.entities import Worker, Cabinet, Instrument
 
 
 class SelectDoctor(CallbackData, prefix="msd"):
@@ -72,6 +72,34 @@ def build_shift_keyboard(shifts: list[tuple[int, str]]) -> InlineKeyboardMarkup:
         builder.button(
             text=name,
             callback_data=f"select_shift:{shift_id}",
+        )
+    builder.adjust(1)
+    return builder.as_markup()
+
+
+def build_cabinet_keyboard(
+    cabinets: Sequence[Cabinet],
+    prefix: str = "cabinet",
+    exclude_id: int | None = None,
+) -> InlineKeyboardMarkup:
+    builder = InlineKeyboardBuilder()
+    for cabinet in cabinets:
+        if exclude_id is not None and cabinet.id == exclude_id:
+            continue
+        builder.button(
+            text=cabinet.name[:64],
+            callback_data=f"{prefix}:{cabinet.id}",
+        )
+    builder.adjust(1)
+    return builder.as_markup()
+
+
+def build_instrument_keyboard(instruments: Sequence[Instrument]) -> InlineKeyboardMarkup:
+    builder = InlineKeyboardBuilder()
+    for instrument in instruments:
+        builder.button(
+            text=instrument.name[:64],
+            callback_data=f"instrument:{instrument.id}",
         )
     builder.adjust(1)
     return builder.as_markup()
