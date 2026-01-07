@@ -10,6 +10,7 @@ from app.handlers.register_handlers import create_register_router
 from app.handlers.survey_handlers import create_survey_router
 from app.handlers.admin_handlers import create_admin_router
 from app.handlers.shift_handlers import create_shift_router
+from app.handlers.instrument_transfer_handlers import create_instrument_transfer_router
 from app.logger import setup_logger
 
 
@@ -29,6 +30,7 @@ async def main():
     dp.include_router(create_register_router(container.registration))
     dp.include_router(create_survey_router(container.survey_flow))
     dp.include_router(create_shift_router(container.shift_service))
+    dp.include_router(create_instrument_transfer_router(container.instrument_transfer))
 
     scheduler = AsyncIOScheduler()
     scheduler.add_job(container.admin_sync.sync_pairs, "cron", hour=19, minute=50)

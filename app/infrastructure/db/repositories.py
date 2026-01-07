@@ -5,20 +5,31 @@ from app.domain.entities import Pair as PairEntity
 from app.domain.entities import Survey as SurveyEntity
 from app.domain.entities import Answer as AnswerEntity
 from app.domain.entities import Shift as ShiftEntity
+from app.domain.entities import Cabinet as CabinetEntity
+from app.domain.entities import Instrument as InstrumentEntity
+from app.domain.entities import InstrumentMove as InstrumentMoveEntity
 from app.domain.repositories import (
     WorkerRepository,
     PairRepository,
     SurveyRepository,
     AnswerRepository,
     ShiftRepository,
+    CabinetRepository,
+    InstrumentRepository,
+    InstrumentMoveRepository,
 )
 from app.infrastructure.db.mappers import (
     from_answer_entity,
+    from_cabinet_entity,
+    from_instrument_entity,
+    from_instrument_move_entity,
     from_pair_entity,
     from_shift_entity,
     from_survey_entity,
     from_worker_entity,
     to_answer_entity,
+    to_cabinet_entity,
+    to_instrument_entity,
     to_pair_entity,
     to_shift_entity,
     to_survey_entity,
@@ -26,6 +37,9 @@ from app.infrastructure.db.mappers import (
 )
 from app.infrastructure.db.models import (
     Answer as AnswerModel,
+    Cabinet as CabinetModel,
+    Instrument as InstrumentModel,
+    InstrumentMove as InstrumentMoveModel,
     Pair as PairModel,
     Shift as ShiftModel,
     Survey as SurveyModel,
@@ -302,3 +316,57 @@ class SqlAlchemyShiftRepository(ShiftRepository):
         async with async_session() as session:
             result = await session.execute(select(ShiftModel))
             return [to_shift_entity(item) for item in result.scalars().all()]
+
+
+class SqlAlchemyCabinetRepository(CabinetRepository):
+    async def list_all(self):
+        async with async_session() as session:
+            result = await session.execute(select(CabinetModel).order_by(CabinetModel.name))
+            return [to_cabinet_entity(item) for item in result.scalars().all()]
+
+    async def get_by_id(self, cabinet_id: int) -> CabinetEntity | None:
+        async with async_session() as session:
+            cabinet = await session.get(CabinetModel, cabinet_id)
+            return to_cabinet_entity(cabinet)
+
+    async def add(self, cabinet: CabinetEntity) -> None:
+        async with async_session() as session:
+            session.add(from_cabinet_entity(cabinet))
+            await session.commit()
+
+
+class SqlAlchemyInstrumentRepository(InstrumentRepository):
+    async def list_by_cabinet(self, cabinet_id: int):
+        async with async_session() as session:
+            result = await session.execute(
+                select(InstrumentModel)
+                .where(InstrumentModel.cabinet_id == cabinet_id)
+                .order_by(InstrumentModel.name)
+            )
+            return [to_instrument_entity(item) for item in result.scalars().all()]
+
+    async def get_by_id(self, instrument_id: int) -> InstrumentEntity | None:
+        async with async_session() as session:
+            instrument = await session.get(InstrumentModel, instrument_id)
+            return to_instrument_entity(instrument)
+
+    async def update_cabinet(self, instrument_id: int, cabinet_id: int) -> bool:
+        async with async_session() as session:
+            instrument = await session.get(InstrumentModel, instrument_id)
+            if not instrument:
+                return False
+            instrument.cabinet_id = cabinet_id
+            await session.commit()
+            return True
+
+    async def add(self, instrument: InstrumentEntity) -> None:
+        async with async_session() as session:
+            session.add(from_instrument_entity(instrument))
+            await session.commit()
+
+
+class SqlAlchemyInstrumentMoveRepository(InstrumentMoveRepository):
+    async def add(self, move: InstrumentMoveEntity) -> None:
+        async with async_session() as session:
+            session.add(from_instrument_move_entity(move))
+            await session.commit()

@@ -94,6 +94,31 @@ class Shift(Base):
     manual = Column(Boolean, default=False)
 
 
+class Cabinet(Base):
+    __tablename__ = "cabinets"
+    id = Column(BigInteger, primary_key=True)
+    name = Column(Text)
+
+
+class Instrument(Base):
+    __tablename__ = "instruments"
+    id = Column(BigInteger, primary_key=True)
+    name = Column(Text)
+    cabinet_id = Column(BigInteger)
+
+
+class InstrumentMove(Base):
+    __tablename__ = "instrument_moves"
+    id = Column(BigInteger, primary_key=True)
+    instrument_id = Column(BigInteger)
+    from_cabinet_id = Column(BigInteger)
+    to_cabinet_id = Column(BigInteger)
+    before_photo_id = Column(String(255))
+    after_photo_id = Column(String(255))
+    moved_by_chat_id = Column(String(31))
+    moved_at = Column(String(63))
+
+
 async def async_main():
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
