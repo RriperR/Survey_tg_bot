@@ -9,6 +9,7 @@ from dotenv import load_dotenv
 class BotSettings:
     token: str
     report_chat_id: str | None
+    admin_chat_ids: list[str]
 
 
 @dataclass
@@ -71,6 +72,11 @@ def load_settings() -> Settings:
     bot = BotSettings(
         token=os.getenv("BOT_TOKEN", ""),
         report_chat_id=os.getenv("REPORT_CHAT_ID"),
+        admin_chat_ids=[
+            item.strip()
+            for item in os.getenv("ADMIN_CHAT_IDS", "").replace(";", ",").split(",")
+            if item.strip()
+        ],
     )
 
     return Settings(

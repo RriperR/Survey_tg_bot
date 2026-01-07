@@ -98,6 +98,7 @@ class Cabinet(Base):
     __tablename__ = "cabinets"
     id = Column(BigInteger, primary_key=True)
     name = Column(Text)
+    is_active = Column(Boolean, default=True)
 
 
 class Instrument(Base):
@@ -105,6 +106,7 @@ class Instrument(Base):
     id = Column(BigInteger, primary_key=True)
     name = Column(Text)
     cabinet_id = Column(BigInteger)
+    is_active = Column(Boolean, default=True)
 
 
 class InstrumentMove(Base):
