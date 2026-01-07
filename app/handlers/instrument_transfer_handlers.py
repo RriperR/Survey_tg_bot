@@ -223,12 +223,6 @@ def create_instrument_transfer_router(
             )
 
         await state.clear()
-        cabinets = await transfer_service.list_cabinets()
-        if cabinets:
-            await message.answer(
-                "Выберите следующий кабинет:",
-                reply_markup=kb.build_cabinet_keyboard(cabinets, prefix="src_cabinet"),
-            )
 
     @router.message(StateFilter(InstrumentTransferState.waiting_after_photo))
     async def handle_after_photo_text(message: Message):
