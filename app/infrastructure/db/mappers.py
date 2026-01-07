@@ -182,6 +182,7 @@ def to_cabinet_entity(model: CabinetModel | None) -> CabinetEntity | None:
     return CabinetEntity(
         id=model.id,
         name=model.name,
+        is_active=model.is_active,
     )
 
 
@@ -189,6 +190,7 @@ def from_cabinet_entity(entity: CabinetEntity) -> CabinetModel:
     return CabinetModel(
         id=entity.id,
         name=entity.name,
+        is_active=entity.is_active,
     )
 
 
@@ -199,6 +201,7 @@ def to_instrument_entity(model: InstrumentModel | None) -> InstrumentEntity | No
         id=model.id,
         name=model.name,
         cabinet_id=model.cabinet_id,
+        is_active=model.is_active,
     )
 
 
@@ -207,6 +210,7 @@ def from_instrument_entity(entity: InstrumentEntity) -> InstrumentModel:
         id=entity.id,
         name=entity.name,
         cabinet_id=entity.cabinet_id,
+        is_active=entity.is_active,
     )
 
 

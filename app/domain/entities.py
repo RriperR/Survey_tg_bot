@@ -73,6 +73,7 @@ class Shift:
 class Cabinet:
     id: int | None
     name: str
+    is_active: bool = True
 
 
 @dataclass
@@ -80,6 +81,7 @@ class Instrument:
     id: int | None
     name: str
     cabinet_id: int
+    is_active: bool = True
 
 
 @dataclass

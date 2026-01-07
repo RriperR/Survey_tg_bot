@@ -319,9 +319,12 @@ class SqlAlchemyShiftRepository(ShiftRepository):
 
 
 class SqlAlchemyCabinetRepository(CabinetRepository):
-    async def list_all(self):
+    async def list_all(self, include_archived: bool = False):
         async with async_session() as session:
-            result = await session.execute(select(CabinetModel).order_by(CabinetModel.name))
+            stmt = select(CabinetModel).order_by(CabinetModel.name)
+            if not include_archived:
+                stmt = stmt.where(CabinetModel.is_active.is_(True))
+            result = await session.execute(stmt)
             return [to_cabinet_entity(item) for item in result.scalars().all()]
 
     async def get_by_id(self, cabinet_id: int) -> CabinetEntity | None:
@@ -334,15 +337,54 @@ class SqlAlchemyCabinetRepository(CabinetRepository):
             session.add(from_cabinet_entity(cabinet))
             await session.commit()
 
+    async def update_name(self, cabinet_id: int, name: str) -> bool:
+        async with async_session() as session:
+            cabinet = await session.get(CabinetModel, cabinet_id)
+            if not cabinet:
+                return False
+            cabinet.name = name
+            await session.commit()
+            return True
 
-class SqlAlchemyInstrumentRepository(InstrumentRepository):
-    async def list_by_cabinet(self, cabinet_id: int):
+    async def set_active(self, cabinet_id: int, is_active: bool) -> bool:
+        async with async_session() as session:
+            cabinet = await session.get(CabinetModel, cabinet_id)
+            if not cabinet:
+                return False
+            cabinet.is_active = is_active
+            await session.commit()
+            return True
+
+    async def delete(self, cabinet_id: int) -> bool:
+        async with async_session() as session:
+            cabinet = await session.get(CabinetModel, cabinet_id)
+            if not cabinet:
+                return False
+            await session.delete(cabinet)
+            await session.commit()
+            return True
+
+    async def has_instruments(self, cabinet_id: int) -> bool:
         async with async_session() as session:
             result = await session.execute(
+                select(InstrumentModel.id)
+                .where(InstrumentModel.cabinet_id == cabinet_id)
+                .limit(1)
+            )
+            return result.scalar_one_or_none() is not None
+
+
+class SqlAlchemyInstrumentRepository(InstrumentRepository):
+    async def list_by_cabinet(self, cabinet_id: int, include_archived: bool = False):
+        async with async_session() as session:
+            stmt = (
                 select(InstrumentModel)
                 .where(InstrumentModel.cabinet_id == cabinet_id)
                 .order_by(InstrumentModel.name)
             )
+            if not include_archived:
+                stmt = stmt.where(InstrumentModel.is_active.is_(True))
+            result = await session.execute(stmt)
             return [to_instrument_entity(item) for item in result.scalars().all()]
 
     async def get_by_id(self, instrument_id: int) -> InstrumentEntity | None:
@@ -364,9 +406,50 @@ class SqlAlchemyInstrumentRepository(InstrumentRepository):
             session.add(from_instrument_entity(instrument))
             await session.commit()
 
+    async def update_name(self, instrument_id: int, name: str) -> bool:
+        async with async_session() as session:
+            instrument = await session.get(InstrumentModel, instrument_id)
+            if not instrument:
+                return False
+            instrument.name = name
+            await session.commit()
+            return True
+
+    async def set_active(self, instrument_id: int, is_active: bool) -> bool:
+        async with async_session() as session:
+            instrument = await session.get(InstrumentModel, instrument_id)
+            if not instrument:
+                return False
+            instrument.is_active = is_active
+            await session.commit()
+            return True
+
+    async def delete(self, instrument_id: int) -> bool:
+        async with async_session() as session:
+            instrument = await session.get(InstrumentModel, instrument_id)
+            if not instrument:
+                return False
+            await session.delete(instrument)
+            await session.commit()
+            return True
+
 
 class SqlAlchemyInstrumentMoveRepository(InstrumentMoveRepository):
     async def add(self, move: InstrumentMoveEntity) -> None:
         async with async_session() as session:
             session.add(from_instrument_move_entity(move))
             await session.commit()
+
+    async def list_recent(self, limit: int = 20):
+        async with async_session() as session:
+            result = await session.execute(
+                select(InstrumentMoveModel)
+                .order_by(InstrumentMoveModel.id.desc())
+                .limit(limit)
+            )
+            return [to_instrument_move_entity(item) for item in result.scalars().all()]
+
+    async def get_by_id(self, move_id: int) -> InstrumentMoveEntity | None:
+        async with async_session() as session:
+            move = await session.get(InstrumentMoveModel, move_id)
+            return to_instrument_move_entity(move)
