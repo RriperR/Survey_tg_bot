@@ -30,6 +30,7 @@ from app.infrastructure.db.mappers import (
     to_answer_entity,
     to_cabinet_entity,
     to_instrument_entity,
+    to_instrument_move_entity,
     to_pair_entity,
     to_shift_entity,
     to_survey_entity,
