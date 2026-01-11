@@ -13,6 +13,7 @@ from app.infrastructure.sheets.gateway import SheetsGateway
 from app.application.use_cases.registration import RegistrationService
 from app.application.use_cases.survey_flow import SurveyFlowService
 from app.application.use_cases.shift_management import ShiftService
+from app.application.use_cases.shift_admin import ShiftAdminService
 from app.application.use_cases.instrument_transfer import InstrumentTransferService
 from app.application.use_cases.instrument_admin import InstrumentAdminService
 from app.application.use_cases.admin_sync import AdminSyncService
@@ -45,6 +46,7 @@ class Container:
             self.answer_repo,
         )
         self.shift_service = ShiftService(self.worker_repo, self.shift_repo)
+        self.shift_admin = ShiftAdminService(self.worker_repo, self.shift_repo)
         self.instrument_transfer = InstrumentTransferService(
             self.cabinet_repo,
             self.instrument_repo,
