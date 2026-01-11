@@ -1,5 +1,4 @@
 from aiogram import F, Router
-from aiogram.filters import Command
 from aiogram.types import CallbackQuery, Message
 from aiogram.utils.keyboard import InlineKeyboardBuilder
 
@@ -49,6 +48,7 @@ def create_shift_admin_router(
             builder.button(text=label, callback_data=f"admin_shift_delete:{shift.id}")
         builder.button(text="Создать смену", callback_data="admin_shift_create")
         builder.button(text="Обновить", callback_data="admin_shift_refresh")
+        builder.button(text="К админке", callback_data="admin_back")
         builder.adjust(1)
         return builder.as_markup()
 
@@ -113,11 +113,12 @@ def create_shift_admin_router(
         else:
             await target.answer(text, reply_markup=build_shift_list_keyboard(shifts))
 
-    @router.message(Command("admin_shifts"))
-    async def admin_shifts(message: Message):
-        if not await require_admin(message):
+    @router.callback_query(F.data == "admin_shifts")
+    async def admin_shifts_menu(callback: CallbackQuery):
+        if not await require_admin(callback):
             return
-        await render_shifts(message)
+        await render_shifts(callback)
+        await callback.answer()
 
     @router.callback_query(F.data == "admin_shift_refresh")
     async def shift_refresh(callback: CallbackQuery):

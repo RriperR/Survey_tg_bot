@@ -10,7 +10,7 @@ from app.domain.entities import Cabinet, Instrument, InstrumentMove
 from app.logger import setup_logger
 
 
-logger = setup_logger("instrument_admin", "instrument_admin.log")
+logger = setup_logger("admin_panel", "admin_panel.log")
 
 
 class InstrumentAdminState(StatesGroup):
@@ -20,7 +20,7 @@ class InstrumentAdminState(StatesGroup):
     waiting_instrument_rename = State()
 
 
-def create_instrument_admin_router(
+def create_admin_panel_router(
     admin_service: InstrumentAdminService,
     admin_chat_ids: set[str],
 ) -> Router:
@@ -33,6 +33,7 @@ def create_instrument_admin_router(
         builder = InlineKeyboardBuilder()
         builder.button(text="Кабинеты", callback_data="admin_cabinets")
         builder.button(text="Инструменты", callback_data="admin_instruments")
+        builder.button(text="Смены", callback_data="admin_shifts")
         builder.button(text="Перемещения", callback_data="admin_moves")
         builder.adjust(1)
         return builder.as_markup()
