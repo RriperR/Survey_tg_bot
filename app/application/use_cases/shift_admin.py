@@ -15,7 +15,14 @@ class ShiftAdminService:
     async def list_today_shifts(self):
         date_str = self._today_str()
         shifts = list(await self.shifts.list_by_date(date_str))
-        shifts.sort(key=lambda s: (s.type or "", s.doctor_name or ""))
+        order = {"morning": 0, "evening": 1}
+        shifts.sort(
+            key=lambda s: (
+                order.get(s.type, 2),
+                (s.doctor_name or "").lower(),
+                s.id or 0,
+            )
+        )
         return shifts
 
     async def list_workers(self):

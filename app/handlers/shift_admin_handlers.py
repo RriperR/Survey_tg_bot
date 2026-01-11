@@ -33,20 +33,19 @@ def create_shift_admin_router(
 
     def format_shift(shift: Shift) -> str:
         shift_type = "Утренняя" if shift.type == "morning" else "Вечерняя"
+        shift_emoji = "🌅" if shift.type == "morning" else "🌙"
         if shift.assistant_id:
             assistant = shift.assistant_name or str(shift.assistant_id)
-            status = f"занята: {assistant}"
+            status = f"✅ занята: {assistant}"
         else:
-            status = "свободна"
-        manual = " (ручная)" if shift.manual else ""
-        return f"{shift.id}) {shift_type} — {shift.doctor_name} — {status}{manual}"
+            status = "🟢 свободна"
+        manual = " ✋" if shift.manual else ""
+        return f"{shift_emoji} {shift.id}) {shift_type} — {shift.doctor_name} — {status}{manual}"
 
     def build_shift_list_keyboard(shifts: list[Shift]):
         builder = InlineKeyboardBuilder()
-        for shift in shifts:
-            label = f"Удалить #{shift.id} {shift.doctor_name}"[:64]
-            builder.button(text=label, callback_data=f"admin_shift_delete:{shift.id}")
         builder.button(text="Создать смену", callback_data="admin_shift_create")
+        builder.button(text="Удалить смену", callback_data="admin_shift_delete_menu")
         builder.button(text="Обновить", callback_data="admin_shift_refresh")
         builder.button(text="К админке", callback_data="admin_back")
         builder.adjust(1)
@@ -104,9 +103,9 @@ def create_shift_admin_router(
     async def render_shifts(target: Message | CallbackQuery):
         shifts = await shift_admin.list_today_shifts()
         if shifts:
-            text = "Смены на сегодня:\n" + "\n".join(format_shift(s) for s in shifts)
+            text = "📅 Смены на сегодня:\n" + "\n".join(format_shift(s) for s in shifts)
         else:
-            text = "Смен на сегодня нет."
+            text = "📭 Смен на сегодня нет."
 
         if isinstance(target, CallbackQuery):
             await target.message.edit_text(text, reply_markup=build_shift_list_keyboard(shifts))
@@ -132,7 +131,7 @@ def create_shift_admin_router(
         if not await require_admin(callback):
             return
         await callback.message.edit_text(
-            "Выберите тип смены:", reply_markup=build_create_type_keyboard()
+            "🛠️ Выберите тип смены:", reply_markup=build_create_type_keyboard()
         )
         await callback.answer()
 
@@ -144,13 +143,13 @@ def create_shift_admin_router(
         workers = await shift_admin.list_workers()
         if not workers:
             await callback.message.edit_text(
-                "Список сотрудников пуст.", reply_markup=build_create_type_keyboard()
+                "⚠️ Список сотрудников пуст.", reply_markup=build_create_type_keyboard()
             )
             await callback.answer()
             return
         workers.sort(key=lambda w: w.full_name)
         await callback.message.edit_text(
-            "Выберите доктора:",
+            "👩‍⚕️ Выберите доктора:",
             reply_markup=build_doctors_keyboard(workers, shift_type, page=0),
         )
         await callback.answer()
@@ -180,9 +179,9 @@ def create_shift_admin_router(
             return
         success = await shift_admin.create_shift_today(doctor.full_name, shift_type)
         if success:
-            await callback.answer("Смена создана")
+            await callback.answer("✅ Смена создана")
         else:
-            await callback.answer("Смена уже существует", show_alert=True)
+            await callback.answer("⚠️ Смена уже существует", show_alert=True)
         await render_shifts(callback)
 
     @router.callback_query(F.data.startswith("admin_shift_delete:"))
@@ -195,7 +194,7 @@ def create_shift_admin_router(
             await callback.answer("Смена не найдена", show_alert=True)
             return
         await callback.message.edit_text(
-            f"Удалить смену?\n{format_shift(shift)}",
+            f"🗑️ Удалить смену?\n{format_shift(shift)}",
             reply_markup=build_delete_confirm_keyboard(int(shift_id)),
         )
         await callback.answer()
@@ -207,9 +206,32 @@ def create_shift_admin_router(
         _, shift_id = callback.data.split(":")
         success = await shift_admin.delete_shift_today(int(shift_id))
         if success:
-            await callback.answer("Смена удалена")
+            await callback.answer("🗑️ Смена удалена")
         else:
-            await callback.answer("Удаление недоступно", show_alert=True)
+            await callback.answer("⛔ Удаление недоступно", show_alert=True)
         await render_shifts(callback)
 
+    @router.callback_query(F.data == "admin_shift_delete_menu")
+    async def shift_delete_menu(callback: CallbackQuery):
+        if not await require_admin(callback):
+            return
+        shifts = await shift_admin.list_today_shifts()
+        if not shifts:
+            await callback.answer("📭 Смен на сегодня нет", show_alert=True)
+            await render_shifts(callback)
+            return
+        await callback.message.edit_text(
+            "🗑️ Выберите смену для удаления:",
+            reply_markup=build_shift_delete_keyboard(shifts),
+        )
+        await callback.answer()
+
     return router
+    def build_shift_delete_keyboard(shifts: list[Shift]):
+        builder = InlineKeyboardBuilder()
+        for shift in shifts:
+            label = f"Удалить #{shift.id} {shift.doctor_name}"[:64]
+            builder.button(text=label, callback_data=f"admin_shift_delete:{shift.id}")
+        builder.button(text="Назад", callback_data="admin_shift_refresh")
+        builder.adjust(1)
+        return builder.as_markup()
