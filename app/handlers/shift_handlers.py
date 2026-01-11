@@ -162,7 +162,7 @@ def create_shift_router(shift_service: ShiftService) -> Router:
         if success:
             readable = "Утренняя" if shift_type == "morning" else "Вечерняя"
             await cb.message.edit_text(
-                f"Готово ✔ {readable} смена у {shift.doctor_name} закреплена за вами"
+                f"Готово ✔ {readable} смена у {doctor.full_name} закреплена за вами"
             )
         else:
             await cb.message.edit_text("Не удалось записаться на смену")
