@@ -19,7 +19,7 @@ class ShiftAdminService:
         shifts.sort(
             key=lambda s: (
                 order.get(s.type, 2),
-                (s.doctor_name or "").lower(),
+                (s.doctor_name or "").strip().casefold(),
                 s.id or 0,
             )
         )

@@ -40,7 +40,7 @@ def create_shift_admin_router(
         else:
             status = "🟢 свободна"
         manual = " ✋" if shift.manual else ""
-        return f"{shift_emoji} {shift.id}) {shift_type} — {shift.doctor_name} — {status}{manual}"
+        return f"{shift_emoji} {shift_type} — {shift.doctor_name} — {status}{manual}"
 
     def build_shift_list_keyboard(shifts: list[Shift]):
         builder = InlineKeyboardBuilder()
@@ -103,7 +103,7 @@ def create_shift_admin_router(
     async def render_shifts(target: Message | CallbackQuery):
         shifts = await shift_admin.list_today_shifts()
         if shifts:
-            text = "📅 Смены на сегодня:\n" + "\n".join(format_shift(s) for s in shifts)
+            text = "🗓 Смены на сегодня:\n" + "\n".join(format_shift(s) for s in shifts)
         else:
             text = "📭 Смен на сегодня нет."
 
