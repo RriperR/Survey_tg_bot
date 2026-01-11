@@ -1,5 +1,7 @@
 ﻿from aiogram import F, Router
-from aiogram.filters import CommandStart
+from aiogram.filters import CommandStart, StateFilter
+from aiogram.fsm.context import FSMContext
+from aiogram.fsm.state import State, StatesGroup
 from aiogram.types import Message, CallbackQuery
 
 from app.application.use_cases.registration import RegistrationService
@@ -8,6 +10,9 @@ from app.logger import setup_logger
 
 
 logger = setup_logger("reg_handlers", "reg.log")
+
+class RegistrationState(StatesGroup):
+    waiting_photo = State()
 
 
 def create_register_router(registration: RegistrationService) -> Router:
@@ -39,7 +44,7 @@ def create_register_router(registration: RegistrationService) -> Router:
         await callback.answer()
 
     @router.callback_query(F.data.startswith("confirm_yes:"))
-    async def confirm_register(callback: CallbackQuery):
+    async def confirm_register(callback: CallbackQuery, state: FSMContext):
         worker_id = int(callback.data.split(":", 1)[1])
         success = await registration.set_chat_id(worker_id, str(callback.from_user.id))
 
@@ -55,6 +60,7 @@ def create_register_router(registration: RegistrationService) -> Router:
         await callback.message.edit_text(
             "Готово! Теперь отправь фото бейджа, чтобы мы закрепили его за твоим профилем."
         )
+        await state.set_state(RegistrationState.waiting_photo)
         await callback.answer()
 
         logger.info("User (id=%s) linked account", callback.from_user.id)
@@ -69,8 +75,8 @@ def create_register_router(registration: RegistrationService) -> Router:
 
         logger.info("User (id=%s) canceled worker selection", callback.from_user.id)
 
-    @router.message(F.photo)
-    async def handle_worker_photo(message: Message):
+    @router.message(StateFilter(RegistrationState.waiting_photo), F.photo)
+    async def handle_worker_photo(message: Message, state: FSMContext):
         photo = message.photo[-1]
         file_id = photo.file_id
 
@@ -80,12 +86,15 @@ def create_register_router(registration: RegistrationService) -> Router:
             await message.answer(
                 "Похоже, ты ещё не выбрал(а) себя. Вернись к /start и зарегистрируйся."
             )
+            await state.clear()
             return
 
         try:
             await registration.set_worker_photo(worker.id, file_id)
             await message.answer("Фото сохранено. Спасибо!")
+            await state.clear()
         except Exception:
             await message.answer("Не удалось сохранить фото, попробуй позже.")
+            await state.clear()
 
     return router
