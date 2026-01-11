@@ -38,7 +38,7 @@ def create_shift_admin_router(
             assistant = shift.assistant_name or str(shift.assistant_id)
             status = f"✅ занята: {assistant}"
         else:
-            status = "🟢 свободна"
+            status = "⚪️ свободна"
         manual = " ✋" if shift.manual else ""
         return f"{shift_emoji} {shift_type} — {shift.doctor_name} — {status}{manual}"
 
