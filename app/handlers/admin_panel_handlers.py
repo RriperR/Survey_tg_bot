@@ -220,7 +220,9 @@ def create_admin_panel_router(
 
     @router.message(Command("admin"))
     async def admin_menu(message: Message, state: FSMContext):
-        if not await require_admin(message):
+        if not is_admin(message.from_user.id):
+            chat_id = message.from_user.id
+            await message.answer(f"⚠️ Нет доступа. Ваш chat id: {chat_id}")
             return
         await state.clear()
         await message.answer("🛠️ Админка:", reply_markup=build_admin_menu())
