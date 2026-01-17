@@ -104,8 +104,9 @@ def create_instrument_transfer_router(
     async def handle_before_photo(message: Message, state: FSMContext):
         photo_id = message.photo[-1].file_id
         data = await state.get_data()
+        instrument_id = data.get("instrument_id")
         source_cabinet_id = data.get("source_cabinet_id")
-        if source_cabinet_id is None:
+        if source_cabinet_id is None or instrument_id is None:
             await state.clear()
             await message.answer("Сессия переноса сброшена. Начните заново: /move_instrument")
             return
@@ -120,13 +121,50 @@ def create_instrument_transfer_router(
                 "Кабинет «Стерилизационная» не найден. Обратитесь к администратору."
             )
             return
+
         if sterilization.id == source_cabinet_id:
-            await state.clear()
+            last_move = await transfer_service.get_last_move_for_instrument(instrument_id)
+            if last_move and last_move.to_cabinet_id == sterilization.id:
+                dest_cabinet = await transfer_service.get_cabinet(
+                    last_move.from_cabinet_id
+                )
+                if not dest_cabinet:
+                    await state.clear()
+                    await message.answer(
+                        "Кабинет возврата не найден. Обратитесь к администратору."
+                    )
+                    return
+                await state.update_data(allowed_dest_cabinet_ids=[dest_cabinet.id])
+                await message.answer(
+                    "Выберите кабинет, куда возвращаем инструмент:",
+                    reply_markup=kb.build_cabinet_keyboard(
+                        [dest_cabinet], prefix="dest_cabinet"
+                    ),
+                )
+                return
+
+            cabinets = await transfer_service.list_cabinets()
+            dest_cabinets = [
+                cabinet for cabinet in cabinets if cabinet.id != sterilization.id
+            ]
+            if not dest_cabinets:
+                await state.clear()
+                await message.answer(
+                    "Нет доступных кабинетов для возврата. Обратитесь к администратору."
+                )
+                return
+            await state.update_data(
+                allowed_dest_cabinet_ids=[cabinet.id for cabinet in dest_cabinets]
+            )
             await message.answer(
-                "Инструмент уже в «Стерилизационной». Выберите другой инструмент."
+                "История перемещения не найдена. Выберите кабинет возврата:",
+                reply_markup=kb.build_cabinet_keyboard(
+                    dest_cabinets, prefix="dest_cabinet"
+                ),
             )
             return
 
+        await state.update_data(allowed_dest_cabinet_ids=[sterilization.id])
         await message.answer(
             "Выберите кабинет, куда переносим инструмент:",
             reply_markup=kb.build_cabinet_keyboard(
@@ -146,7 +184,15 @@ def create_instrument_transfer_router(
         cabinet_id = int(callback.data.split(":", 1)[1])
         data = await state.get_data()
         source_cabinet_id = data.get("source_cabinet_id")
+        allowed_dest_cabinet_ids = data.get("allowed_dest_cabinet_ids")
         if source_cabinet_id is None:
+            await state.clear()
+            await callback.answer(
+                "Сессия переноса сброшена. Начните заново: /move_instrument",
+                show_alert=True,
+            )
+            return
+        if not allowed_dest_cabinet_ids:
             await state.clear()
             await callback.answer(
                 "Сессия переноса сброшена. Начните заново: /move_instrument",
@@ -158,11 +204,17 @@ def create_instrument_transfer_router(
             await callback.answer("Нужно выбрать другой кабинет", show_alert=True)
             return
 
-        sterilization = await transfer_service.get_sterilization_cabinet()
-        if not sterilization or sterilization.id != cabinet_id:
-            await callback.answer(
-                "Перенос возможен только в «Стерилизационную»", show_alert=True
-            )
+        if cabinet_id not in allowed_dest_cabinet_ids:
+            sterilization = await transfer_service.get_sterilization_cabinet()
+            if sterilization and source_cabinet_id == sterilization.id:
+                await callback.answer(
+                    "Выберите кабинет из списка",
+                    show_alert=True,
+                )
+            else:
+                await callback.answer(
+                    "Перенос возможен только в «Стерилизационную»", show_alert=True
+                )
             return
 
         cabinet = await transfer_service.get_cabinet(cabinet_id)

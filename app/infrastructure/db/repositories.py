@@ -530,6 +530,16 @@ class SqlAlchemyInstrumentMoveRepository(InstrumentMoveRepository):
             )
             return [to_instrument_move_entity(item) for item in result.scalars().all()]
 
+    async def get_last_for_instrument(self, instrument_id: int):
+        async with async_session() as session:
+            result = await session.execute(
+                select(InstrumentMoveModel)
+                .where(InstrumentMoveModel.instrument_id == instrument_id)
+                .order_by(InstrumentMoveModel.id.desc())
+                .limit(1)
+            )
+            return to_instrument_move_entity(result.scalar_one_or_none())
+
     async def get_by_id(self, move_id: int) -> InstrumentMoveEntity | None:
         async with async_session() as session:
             move = await session.get(InstrumentMoveModel, move_id)

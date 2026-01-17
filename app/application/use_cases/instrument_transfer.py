@@ -44,6 +44,9 @@ class InstrumentTransferService:
     async def get_instrument(self, instrument_id: int):
         return await self.instruments.get_by_id(instrument_id)
 
+    async def get_last_move_for_instrument(self, instrument_id: int):
+        return await self.moves.get_last_for_instrument(instrument_id)
+
     async def transfer_instrument(
         self,
         instrument_id: int,
@@ -63,12 +66,18 @@ class InstrumentTransferService:
         target = await self.cabinets.get_by_id(to_cabinet_id)
         if not target:
             return False
-        if (
-            target.name is None
-            or target.name.strip().casefold()
-            != self.STERILIZATION_CABINET_NAME.casefold()
-        ):
+
+        sterilization = await self.get_sterilization_cabinet()
+        if not sterilization:
             return False
+        if from_cabinet_id == sterilization.id:
+            last_move = await self.moves.get_last_for_instrument(instrument_id)
+            if last_move and last_move.to_cabinet_id == sterilization.id:
+                if last_move.from_cabinet_id != to_cabinet_id:
+                    return False
+        else:
+            if to_cabinet_id != sterilization.id:
+                return False
 
         updated = await self.instruments.update_cabinet(instrument_id, to_cabinet_id)
         if not updated:
