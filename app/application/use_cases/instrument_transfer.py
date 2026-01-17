@@ -9,6 +9,8 @@ from app.domain.repositories import (
 
 
 class InstrumentTransferService:
+    STERILIZATION_CABINET_NAME = "Стерилизационная"
+
     def __init__(
         self,
         cabinets: CabinetRepository,
@@ -24,6 +26,17 @@ class InstrumentTransferService:
 
     async def get_cabinet(self, cabinet_id: int):
         return await self.cabinets.get_by_id(cabinet_id)
+
+    async def get_sterilization_cabinet(self):
+        cabinets = await self.cabinets.list_all()
+        for cabinet in cabinets:
+            if (
+                cabinet.name
+                and cabinet.name.strip().casefold()
+                == self.STERILIZATION_CABINET_NAME.casefold()
+            ):
+                return cabinet
+        return None
 
     async def list_instruments(self, cabinet_id: int):
         return list(await self.instruments.list_by_cabinet(cabinet_id))
@@ -49,6 +62,12 @@ class InstrumentTransferService:
 
         target = await self.cabinets.get_by_id(to_cabinet_id)
         if not target:
+            return False
+        if (
+            target.name is None
+            or target.name.strip().casefold()
+            != self.STERILIZATION_CABINET_NAME.casefold()
+        ):
             return False
 
         updated = await self.instruments.update_cabinet(instrument_id, to_cabinet_id)

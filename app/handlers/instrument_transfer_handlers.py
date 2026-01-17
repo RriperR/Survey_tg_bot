@@ -113,19 +113,24 @@ def create_instrument_transfer_router(
         await state.update_data(before_photo_id=photo_id)
         await state.set_state(InstrumentTransferState.choosing_destination)
 
-        cabinets = await transfer_service.list_cabinets()
-        dest_cabinets = [c for c in cabinets if c.id != source_cabinet_id]
-        if not dest_cabinets:
+        sterilization = await transfer_service.get_sterilization_cabinet()
+        if not sterilization:
             await state.clear()
             await message.answer(
-                "Нет доступных кабинетов для переноса. Обратитесь к администратору."
+                "Кабинет «Стерилизационная» не найден. Обратитесь к администратору."
+            )
+            return
+        if sterilization.id == source_cabinet_id:
+            await state.clear()
+            await message.answer(
+                "Инструмент уже в «Стерилизационной». Выберите другой инструмент."
             )
             return
 
         await message.answer(
             "Выберите кабинет, куда переносим инструмент:",
             reply_markup=kb.build_cabinet_keyboard(
-                dest_cabinets, prefix="dest_cabinet"
+                [sterilization], prefix="dest_cabinet"
             ),
         )
 
@@ -151,6 +156,13 @@ def create_instrument_transfer_router(
 
         if cabinet_id == source_cabinet_id:
             await callback.answer("Нужно выбрать другой кабинет", show_alert=True)
+            return
+
+        sterilization = await transfer_service.get_sterilization_cabinet()
+        if not sterilization or sterilization.id != cabinet_id:
+            await callback.answer(
+                "Перенос возможен только в «Стерилизационную»", show_alert=True
+            )
             return
 
         cabinet = await transfer_service.get_cabinet(cabinet_id)
