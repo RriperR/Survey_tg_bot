@@ -1,6 +1,6 @@
 from datetime import datetime
 
-from app.domain.entities import AdminUser
+from app.domain.entities import AdminUser, Worker
 from app.domain.repositories import AdminRepository, WorkerRepository
 
 
@@ -30,6 +30,10 @@ class AdminAccessService:
 
     async def list_admins(self) -> list[AdminUser]:
         return list(await self.admins.list_all())
+
+    async def list_registered_workers(self) -> list[Worker]:
+        workers = list(await self.workers.list_all())
+        return [worker for worker in workers if worker.chat_id and worker.chat_id.strip()]
 
     async def add_admin(self, chat_id: str) -> bool:
         admin = AdminUser(
