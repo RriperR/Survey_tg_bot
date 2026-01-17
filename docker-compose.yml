@@ -1,5 +1,6 @@
 services:
   bot:
+    image: riper3d/survey_bot
     env_file:
       - .env
     build: .
