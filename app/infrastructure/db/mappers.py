@@ -1,4 +1,5 @@
 from app.domain.entities import (
+    AdminUser as AdminUserEntity,
     Answer as AnswerEntity,
     Cabinet as CabinetEntity,
     Instrument as InstrumentEntity,
@@ -9,6 +10,7 @@ from app.domain.entities import (
     Worker as WorkerEntity,
 )
 from app.infrastructure.db.models import (
+    AdminUser as AdminUserModel,
     Answer as AnswerModel,
     Cabinet as CabinetModel,
     Instrument as InstrumentModel,
@@ -18,6 +20,24 @@ from app.infrastructure.db.models import (
     Survey as SurveyModel,
     Worker as WorkerModel,
 )
+
+
+def to_admin_entity(model: AdminUserModel | None) -> AdminUserEntity | None:
+    if model is None:
+        return None
+    return AdminUserEntity(
+        id=model.id,
+        chat_id=model.chat_id,
+        added_at=model.added_at,
+    )
+
+
+def from_admin_entity(entity: AdminUserEntity) -> AdminUserModel:
+    return AdminUserModel(
+        id=entity.id,
+        chat_id=entity.chat_id,
+        added_at=entity.added_at,
+    )
 
 
 def to_worker_entity(model: WorkerModel | None) -> WorkerEntity | None:

@@ -1,5 +1,6 @@
 from sqlalchemy import select, update, delete
 
+from app.domain.entities import AdminUser as AdminUserEntity
 from app.domain.entities import Worker as WorkerEntity
 from app.domain.entities import Pair as PairEntity
 from app.domain.entities import Survey as SurveyEntity
@@ -9,6 +10,7 @@ from app.domain.entities import Cabinet as CabinetEntity
 from app.domain.entities import Instrument as InstrumentEntity
 from app.domain.entities import InstrumentMove as InstrumentMoveEntity
 from app.domain.repositories import (
+    AdminRepository,
     WorkerRepository,
     PairRepository,
     SurveyRepository,
@@ -19,6 +21,7 @@ from app.domain.repositories import (
     InstrumentMoveRepository,
 )
 from app.infrastructure.db.mappers import (
+    from_admin_entity,
     from_answer_entity,
     from_cabinet_entity,
     from_instrument_entity,
@@ -27,6 +30,7 @@ from app.infrastructure.db.mappers import (
     from_shift_entity,
     from_survey_entity,
     from_worker_entity,
+    to_admin_entity,
     to_answer_entity,
     to_cabinet_entity,
     to_instrument_entity,
@@ -37,6 +41,7 @@ from app.infrastructure.db.mappers import (
     to_worker_entity,
 )
 from app.infrastructure.db.models import (
+    AdminUser as AdminUserModel,
     Answer as AnswerModel,
     Cabinet as CabinetModel,
     Instrument as InstrumentModel,
@@ -47,6 +52,50 @@ from app.infrastructure.db.models import (
     Worker as WorkerModel,
     async_session,
 )
+
+
+class SqlAlchemyAdminRepository(AdminRepository):
+    async def list_all(self):
+        async with async_session() as session:
+            result = await session.execute(
+                select(AdminUserModel).order_by(AdminUserModel.chat_id)
+            )
+            return [to_admin_entity(item) for item in result.scalars().all()]
+
+    async def get_by_chat_id(self, chat_id: str) -> AdminUserEntity | None:
+        async with async_session() as session:
+            stmt = select(AdminUserModel).where(AdminUserModel.chat_id == chat_id)
+            result = await session.execute(stmt)
+            return to_admin_entity(result.scalar_one_or_none())
+
+    async def exists(self, chat_id: str) -> bool:
+        async with async_session() as session:
+            stmt = select(AdminUserModel.id).where(AdminUserModel.chat_id == chat_id)
+            result = await session.execute(stmt)
+            return result.scalar_one_or_none() is not None
+
+    async def add(self, admin: AdminUserEntity) -> bool:
+        async with async_session() as session:
+            stmt = select(AdminUserModel.id).where(
+                AdminUserModel.chat_id == admin.chat_id
+            )
+            existing = await session.execute(stmt)
+            if existing.scalar_one_or_none():
+                return False
+            session.add(from_admin_entity(admin))
+            await session.commit()
+            return True
+
+    async def delete_by_chat_id(self, chat_id: str) -> bool:
+        async with async_session() as session:
+            stmt = select(AdminUserModel).where(AdminUserModel.chat_id == chat_id)
+            result = await session.execute(stmt)
+            admin = result.scalar_one_or_none()
+            if not admin:
+                return False
+            await session.delete(admin)
+            await session.commit()
+            return True
 
 
 class SqlAlchemyWorkerRepository(WorkerRepository):

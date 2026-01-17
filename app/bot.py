@@ -33,17 +33,11 @@ async def main():
     dp.include_router(create_register_router(container.registration))
     dp.include_router(create_survey_router(container.survey_flow))
     dp.include_router(create_shift_router(container.shift_service))
-    dp.include_router(
-        create_shift_admin_router(
-            container.shift_admin, set(container.settings.bot.admin_chat_ids)
-        )
-    )
+    dp.include_router(create_shift_admin_router(container.shift_admin, container.admin_access))
     dp.include_router(create_moves_router(container.instrument_admin))
     dp.include_router(create_instrument_transfer_router(container.instrument_transfer))
     dp.include_router(
-        create_admin_panel_router(
-            container.instrument_admin, set(container.settings.bot.admin_chat_ids)
-        )
+        create_admin_panel_router(container.instrument_admin, container.admin_access)
     )
 
     scheduler = AsyncIOScheduler()

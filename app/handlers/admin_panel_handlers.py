@@ -5,12 +5,14 @@ from aiogram.fsm.state import State, StatesGroup
 from aiogram.types import CallbackQuery, Message
 from aiogram.utils.keyboard import InlineKeyboardBuilder
 
+from app.application.use_cases.admin_access import AdminAccessService
 from app.application.use_cases.instrument_admin import InstrumentAdminService
-from app.domain.entities import Cabinet, Instrument
+from app.domain.entities import Cabinet, Instrument, Worker
 from app.logger import setup_logger
 
 
 logger = setup_logger("admin_panel", "admin_panel.log")
+PER_PAGE = 10
 
 
 class InstrumentAdminState(StatesGroup):
@@ -18,22 +20,21 @@ class InstrumentAdminState(StatesGroup):
     waiting_cabinet_rename = State()
     waiting_instrument_name = State()
     waiting_instrument_rename = State()
+    waiting_admin_chat_id = State()
 
 
 def create_admin_panel_router(
     admin_service: InstrumentAdminService,
-    admin_chat_ids: set[str],
+    admin_access: AdminAccessService,
 ) -> Router:
     router = Router()
-
-    def is_admin(user_id: int) -> bool:
-        return str(user_id) in admin_chat_ids
 
     def build_admin_menu():
         builder = InlineKeyboardBuilder()
         builder.button(text="🗓 Смены", callback_data="admin_shifts")
         builder.button(text="🏢 Кабинеты", callback_data="admin_cabinets")
         builder.button(text="🧰 Инструменты", callback_data="admin_instruments")
+        builder.button(text="👮 Админы", callback_data="admin_users")
         builder.adjust(1)
         return builder.as_markup()
 
@@ -161,10 +162,59 @@ def create_admin_panel_router(
         builder.adjust(1)
         return builder.as_markup()
 
+    def build_admins_menu():
+        builder = InlineKeyboardBuilder()
+        builder.button(text="➕ Добавить админа", callback_data="admin_user_add")
+        builder.button(text="➖ Удалить админа", callback_data="admin_user_remove_menu")
+        builder.button(text="⬅️ Назад", callback_data="admin_back")
+        builder.adjust(1)
+        return builder.as_markup()
+
+    def build_admin_remove_keyboard(admins: list[tuple[str, str]]):
+        builder = InlineKeyboardBuilder()
+        for chat_id, label in admins:
+            builder.button(text=label[:64], callback_data=f"admin_user_remove:{chat_id}")
+        builder.button(text="⬅️ Назад", callback_data="admin_users")
+        builder.adjust(1)
+        return builder.as_markup()
+
+    def build_admin_add_menu():
+        builder = InlineKeyboardBuilder()
+        builder.button(text="👤 Выбрать сотрудника", callback_data="admin_user_add_choose")
+        builder.button(text="✍️ Ввести chat id", callback_data="admin_user_add_manual")
+        builder.button(text="⬅️ Назад", callback_data="admin_users")
+        builder.adjust(1)
+        return builder.as_markup()
+
+    def build_admin_add_workers_keyboard(workers: list[Worker], page: int):
+        total = len(workers)
+        start = page * PER_PAGE
+        end = min(start + PER_PAGE, total)
+
+        builder = InlineKeyboardBuilder()
+        for worker in workers[start:end]:
+            label = f"{worker.full_name} ({worker.chat_id})"
+            builder.button(
+                text=label[:64],
+                callback_data=f"admin_user_add_select:{worker.chat_id}",
+            )
+
+        nav = InlineKeyboardBuilder()
+        if start > 0:
+            nav.button(text="Назад", callback_data=f"admin_user_add_page:{page - 1}")
+        if end < total:
+            nav.button(text="Вперёд", callback_data=f"admin_user_add_page:{page + 1}")
+        if nav.buttons:
+            builder.row(*nav.buttons)
+
+        builder.button(text="⬅️ Назад", callback_data="admin_user_add")
+        builder.adjust(1)
+        return builder.as_markup()
+
 
     async def require_admin(callback: CallbackQuery | Message) -> bool:
         user_id = callback.from_user.id
-        if not is_admin(user_id):
+        if not await admin_access.is_admin(user_id):
             if isinstance(callback, CallbackQuery):
                 await callback.answer("⛔ Нет доступа", show_alert=True)
             else:
@@ -217,10 +267,59 @@ def create_admin_panel_router(
             ),
         )
 
+    async def format_admin_entry(chat_id: str) -> str:
+        name = await admin_access.resolve_worker_name(chat_id)
+        if name:
+            return f"{chat_id} - {name}"
+        return chat_id
+
+    async def render_admins(target: CallbackQuery | Message):
+        super_admins = admin_access.list_super_admins()
+        db_admins = await admin_access.list_admins()
+        super_set = set(super_admins)
+        db_admins = [admin for admin in db_admins if admin.chat_id not in super_set]
+        lines = ["👮 Админы:"]
+        if super_admins:
+            lines.append("⭐ Супер-админы (ENV):")
+            for chat_id in super_admins:
+                lines.append(f"- {await format_admin_entry(chat_id)}")
+        else:
+            lines.append("⭐ Супер-админы (ENV): нет")
+        if db_admins:
+            lines.append("👤 Админы (БД):")
+            for admin in db_admins:
+                lines.append(f"- {await format_admin_entry(admin.chat_id)}")
+        else:
+            lines.append("👤 Админы (БД): нет")
+        text = "\n".join(lines)
+        if isinstance(target, CallbackQuery):
+            await target.message.edit_text(text, reply_markup=build_admins_menu())
+        else:
+            await target.answer(text, reply_markup=build_admins_menu())
+
+    async def render_admin_add_workers(callback: CallbackQuery, page: int):
+        workers = await admin_access.list_registered_workers()
+        admin_ids = {admin.chat_id for admin in await admin_access.list_admins()}
+        admin_ids.update(admin_access.list_super_admins())
+        available = [worker for worker in workers if worker.chat_id not in admin_ids]
+        available.sort(key=lambda w: (w.full_name or "").strip().casefold())
+        if not available:
+            await callback.message.edit_text(
+                "ℹ️ Нет доступных сотрудников для добавления.",
+                reply_markup=build_admin_add_menu(),
+            )
+            return
+        max_page = (len(available) - 1) // PER_PAGE
+        page = max(0, min(page, max_page))
+        await callback.message.edit_text(
+            "👤 Выберите сотрудника для добавления в админы:",
+            reply_markup=build_admin_add_workers_keyboard(available, page),
+        )
+
 
     @router.message(Command("admin"))
     async def admin_menu(message: Message, state: FSMContext):
-        if not is_admin(message.from_user.id):
+        if not await admin_access.is_admin(message.from_user.id):
             chat_id = message.from_user.id
             await message.answer(f"⚠️ Нет доступа. Ваш chat id: {chat_id}")
             return
@@ -236,6 +335,132 @@ def create_admin_panel_router(
             "🛠️ Админка:", reply_markup=build_admin_menu()
         )
         await callback.answer()
+
+    @router.callback_query(F.data == "admin_users")
+    async def admin_users(callback: CallbackQuery, state: FSMContext):
+        if not await require_admin(callback):
+            return
+        await state.clear()
+        await render_admins(callback)
+        await callback.answer()
+
+    @router.callback_query(F.data == "admin_user_add")
+    async def admin_user_add(callback: CallbackQuery, state: FSMContext):
+        if not await require_admin(callback):
+            return
+        await state.clear()
+        await callback.message.edit_text(
+            "👮 Как добавить админа?", reply_markup=build_admin_add_menu()
+        )
+        await callback.answer()
+
+    @router.callback_query(F.data == "admin_user_add_manual")
+    async def admin_user_add_manual(callback: CallbackQuery, state: FSMContext):
+        if not await require_admin(callback):
+            return
+        await state.clear()
+        await state.set_state(InstrumentAdminState.waiting_admin_chat_id)
+        await callback.message.edit_text("👮 Отправьте chat id нового админа:")
+        await callback.answer()
+
+    @router.callback_query(F.data == "admin_user_add_choose")
+    async def admin_user_add_choose(callback: CallbackQuery):
+        if not await require_admin(callback):
+            return
+        await render_admin_add_workers(callback, page=0)
+        await callback.answer()
+
+    @router.callback_query(F.data.startswith("admin_user_add_page:"))
+    async def admin_user_add_page(callback: CallbackQuery):
+        if not await require_admin(callback):
+            return
+        _, page_str = callback.data.split(":")
+        await render_admin_add_workers(callback, page=int(page_str))
+        await callback.answer()
+
+    @router.callback_query(F.data.startswith("admin_user_add_select:"))
+    async def admin_user_add_select(callback: CallbackQuery):
+        if not await require_admin(callback):
+            return
+        _, chat_id = callback.data.split(":", 1)
+        if admin_access.is_super_admin(chat_id):
+            await callback.answer("⭐ Уже супер-админ", show_alert=True)
+            return
+        if await admin_access.is_admin(chat_id):
+            await callback.answer("ℹ️ Админ уже добавлен", show_alert=True)
+            return
+        success = await admin_access.add_admin(chat_id)
+        if success:
+            await callback.answer("✅ Админ добавлен")
+        else:
+            await callback.answer("ℹ️ Админ уже добавлен", show_alert=True)
+        await render_admins(callback)
+
+    @router.message(StateFilter(InstrumentAdminState.waiting_admin_chat_id))
+    async def admin_user_add_chat_id(message: Message, state: FSMContext):
+        if not await require_admin(message):
+            return
+        chat_id = message.text.strip()
+        if not chat_id.isdigit():
+            await message.answer("⛔ Нужен числовой chat id. Попробуйте ещё раз.")
+            return
+        if admin_access.is_super_admin(chat_id):
+            await state.clear()
+            await message.answer("⭐ Этот chat id уже указан в ADMIN_CHAT_IDS.")
+            await render_admins(message)
+            return
+        if await admin_access.is_admin(chat_id):
+            await state.clear()
+            await message.answer("ℹ️ Админ уже добавлен.")
+            await render_admins(message)
+            return
+        success = await admin_access.add_admin(chat_id)
+        await state.clear()
+        if success:
+            await message.answer("✅ Админ добавлен.")
+        else:
+            await message.answer("ℹ️ Админ уже добавлен.")
+        await render_admins(message)
+
+    @router.callback_query(F.data == "admin_user_remove_menu")
+    async def admin_user_remove_menu(callback: CallbackQuery):
+        if not await require_admin(callback):
+            return
+        admins = await admin_access.list_admins()
+        admins = [admin for admin in admins if not admin_access.is_super_admin(admin.chat_id)]
+        if not admins:
+            await callback.answer("ℹ️ В БД нет админов", show_alert=True)
+            await render_admins(callback)
+            return
+        labels: list[tuple[str, str]] = []
+        for admin in admins:
+            label = await format_admin_entry(admin.chat_id)
+            labels.append((admin.chat_id, label))
+        await callback.message.edit_text(
+            "🗑️ Выберите админа для удаления:",
+            reply_markup=build_admin_remove_keyboard(labels),
+        )
+        await callback.answer()
+
+    @router.callback_query(F.data.startswith("admin_user_remove:"))
+    async def admin_user_remove(callback: CallbackQuery):
+        if not await require_admin(callback):
+            return
+        _, chat_id = callback.data.split(":", 1)
+        if admin_access.is_super_admin(chat_id):
+            await callback.answer("⛔ Нельзя удалить супер-админа", show_alert=True)
+            return
+        if chat_id == str(callback.from_user.id) and not admin_access.is_super_admin(
+            callback.from_user.id
+        ):
+            await callback.answer("⛔ Нельзя удалить себя", show_alert=True)
+            return
+        success = await admin_access.remove_admin(chat_id)
+        if success:
+            await callback.answer("🗑️ Админ удалён")
+        else:
+            await callback.answer("⛔ Админ не найден", show_alert=True)
+        await render_admins(callback)
 
     @router.callback_query(F.data == "admin_cabinets")
     async def admin_cabinets(callback: CallbackQuery, state: FSMContext):
