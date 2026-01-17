@@ -11,6 +11,8 @@ from app.handlers.survey_handlers import create_survey_router
 from app.handlers.admin_handlers import create_admin_router
 from app.handlers.shift_handlers import create_shift_router
 from app.handlers.shift_admin_handlers import create_shift_admin_router
+from app.handlers.moves_handlers import create_moves_router
+from app.handlers.chat_id_handlers import create_chat_id_router
 from app.handlers.instrument_transfer_handlers import create_instrument_transfer_router
 from app.handlers.admin_panel_handlers import create_admin_panel_router
 from app.logger import setup_logger
@@ -37,6 +39,8 @@ async def main():
             container.shift_admin, set(container.settings.bot.admin_chat_ids)
         )
     )
+    dp.include_router(create_moves_router(container.instrument_admin))
+    dp.include_router(create_chat_id_router())
     dp.include_router(create_instrument_transfer_router(container.instrument_transfer))
     dp.include_router(
         create_admin_panel_router(

@@ -2,11 +2,11 @@ from aiogram import F, Router
 from aiogram.filters import Command, StateFilter
 from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import State, StatesGroup
-from aiogram.types import CallbackQuery, Message, InlineKeyboardButton
+from aiogram.types import CallbackQuery, Message
 from aiogram.utils.keyboard import InlineKeyboardBuilder
 
 from app.application.use_cases.instrument_admin import InstrumentAdminService
-from app.domain.entities import Cabinet, Instrument, InstrumentMove
+from app.domain.entities import Cabinet, Instrument
 from app.logger import setup_logger
 
 
@@ -34,7 +34,6 @@ def create_admin_panel_router(
         builder.button(text="🗓 Смены", callback_data="admin_shifts")
         builder.button(text="🏢 Кабинеты", callback_data="admin_cabinets")
         builder.button(text="🧰 Инструменты", callback_data="admin_instruments")
-        builder.button(text="📦 Перемещения", callback_data="admin_moves")
         builder.adjust(1)
         return builder.as_markup()
 
@@ -162,22 +161,6 @@ def create_admin_panel_router(
         builder.adjust(1)
         return builder.as_markup()
 
-    def build_moves_keyboard(moves: list[InstrumentMove]):
-        builder = InlineKeyboardBuilder()
-        for move in moves:
-            builder.row(
-                InlineKeyboardButton(
-                    text=f"📷 До #{move.id}",
-                    callback_data=f"move_photo:before:{move.id}",
-                ),
-                InlineKeyboardButton(
-                    text=f"📷 После #{move.id}",
-                    callback_data=f"move_photo:after:{move.id}",
-                ),
-            )
-        builder.row(InlineKeyboardButton(text="🔄 Обновить", callback_data="admin_moves"))
-        builder.row(InlineKeyboardButton(text="⬅️ Назад", callback_data="admin_back"))
-        return builder.as_markup()
 
     async def require_admin(callback: CallbackQuery | Message) -> bool:
         user_id = callback.from_user.id
@@ -234,35 +217,6 @@ def create_admin_panel_router(
             ),
         )
 
-    async def render_moves(callback: CallbackQuery):
-        moves = await admin_service.list_recent_moves(limit=10)
-        cabinets = await admin_service.list_cabinets(include_archived=True)
-        cabinet_map = {c.id: c.name for c in cabinets}
-        instruments = []
-        for cabinet in cabinets:
-            instruments.extend(
-                await admin_service.list_instruments(cabinet.id, include_archived=True)
-            )
-        instrument_map = {i.id: i.name for i in instruments}
-
-        if not moves:
-            await callback.message.edit_text(
-                "📦 Перемещений пока нет.",
-                reply_markup=build_admin_menu(),
-            )
-            return
-
-        lines = []
-        for move in moves:
-            inst_name = instrument_map.get(move.instrument_id, f"#{move.instrument_id}")
-            from_name = cabinet_map.get(move.from_cabinet_id, f"#{move.from_cabinet_id}")
-            to_name = cabinet_map.get(move.to_cabinet_id, f"#{move.to_cabinet_id}")
-            lines.append(f"{move.id}) {move.moved_at} — {inst_name}: {from_name} -> {to_name}")
-
-        await callback.message.edit_text(
-            "📦 Последние перемещения:\n" + "\n".join(lines),
-            reply_markup=build_moves_keyboard(moves),
-        )
 
     @router.message(Command("admin"))
     async def admin_menu(message: Message, state: FSMContext):
@@ -580,30 +534,5 @@ def create_admin_panel_router(
         await admin_service.delete_instrument(int(instrument_id))
         await callback.answer("🗑️ Инструмент удалён")
         await render_instrument_list(callback, int(cabinet_id), view=view)
-
-    @router.callback_query(F.data == "admin_moves")
-    async def admin_moves(callback: CallbackQuery, state: FSMContext):
-        if not await require_admin(callback):
-            return
-        await state.clear()
-        await render_moves(callback)
-        await callback.answer()
-
-    @router.callback_query(F.data.startswith("move_photo:"))
-    async def move_photo(callback: CallbackQuery):
-        if not await require_admin(callback):
-            return
-        _, kind, move_id = callback.data.split(":")
-        move = await admin_service.get_move(int(move_id))
-        if not move:
-            await callback.answer("⛔ Перемещение не найдено", show_alert=True)
-            return
-        photo_id = move.before_photo_id if kind == "before" else move.after_photo_id
-        if not photo_id:
-            await callback.answer("📭 Фото отсутствует", show_alert=True)
-            return
-        caption = "📷 Фото до" if kind == "before" else "📷 Фото после"
-        await callback.message.answer_photo(photo=photo_id, caption=caption)
-        await callback.answer()
 
     return router
