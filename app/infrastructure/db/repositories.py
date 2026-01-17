@@ -306,6 +306,37 @@ class SqlAlchemyShiftRepository(ShiftRepository):
             await session.commit()
             return True
 
+    async def add_slot(self, doctor_name: str, date: str, shift_type: str) -> bool:
+        async with async_session() as session:
+            existing = await session.execute(
+                select(ShiftModel.id).where(
+                    ShiftModel.doctor_name == doctor_name,
+                    ShiftModel.date == date,
+                    ShiftModel.type == shift_type,
+                )
+            )
+            if existing.scalar_one_or_none():
+                return False
+
+            shift = ShiftModel(
+                doctor_name=doctor_name,
+                date=date,
+                type=shift_type,
+                manual=False,
+            )
+            session.add(shift)
+            await session.commit()
+            return True
+
+    async def delete_by_id(self, shift_id: int) -> bool:
+        async with async_session() as session:
+            shift = await session.get(ShiftModel, shift_id)
+            if not shift:
+                return False
+            await session.delete(shift)
+            await session.commit()
+            return True
+
     async def list_by_date(self, date: str):
         async with async_session() as session:
             result = await session.execute(
