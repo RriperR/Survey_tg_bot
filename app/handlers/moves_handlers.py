@@ -45,15 +45,16 @@ def create_moves_router(moves_service: InstrumentAdminService) -> Router:
         if not moves:
             text = "📦 Перемещений пока нет."
         else:
-            lines = []
+            blocks = []
             for move in moves:
                 inst_name = instrument_map.get(move.instrument_id, f"#{move.instrument_id}")
                 from_name = cabinet_map.get(move.from_cabinet_id, f"#{move.from_cabinet_id}")
                 to_name = cabinet_map.get(move.to_cabinet_id, f"#{move.to_cabinet_id}")
-                lines.append(
-                    f"🕒 {move.moved_at} — {inst_name}: {from_name} -> {to_name}"
+                blocks.append(
+                    f"#{move.id} 🕒 {move.moved_at} — {inst_name}\n"
+                    f"{from_name} ➡️ {to_name}"
                 )
-            text = "📦 Последние перемещения:\n" + "\n".join(lines)
+            text = "📦 Последние перемещения:\n" + "\n\n".join(blocks)
 
         markup = build_moves_keyboard(moves) if moves else None
         if isinstance(target, CallbackQuery):
