@@ -12,6 +12,13 @@ class Worker:
 
 
 @dataclass
+class AdminUser:
+    id: int | None
+    chat_id: str
+    added_at: str | None = None
+
+
+@dataclass
 class Pair:
     id: int | None
     subject: str

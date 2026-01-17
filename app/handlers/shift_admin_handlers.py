@@ -2,6 +2,7 @@ from aiogram import F, Router
 from aiogram.types import CallbackQuery, Message
 from aiogram.utils.keyboard import InlineKeyboardBuilder
 
+from app.application.use_cases.admin_access import AdminAccessService
 from app.application.use_cases.shift_admin import ShiftAdminService
 from app.domain.entities import Shift, Worker
 from app.logger import setup_logger
@@ -14,16 +15,13 @@ PER_PAGE = 10
 
 def create_shift_admin_router(
     shift_admin: ShiftAdminService,
-    admin_chat_ids: set[str],
+    admin_access: AdminAccessService,
 ) -> Router:
     router = Router()
 
-    def is_admin(user_id: int) -> bool:
-        return str(user_id) in admin_chat_ids
-
     async def require_admin(target: Message | CallbackQuery) -> bool:
         user_id = target.from_user.id
-        if not is_admin(user_id):
+        if not await admin_access.is_admin(user_id):
             if isinstance(target, CallbackQuery):
                 await target.answer("Нет доступа", show_alert=True)
             else:
@@ -97,6 +95,15 @@ def create_shift_admin_router(
             callback_data=f"admin_shift_delete_confirm:{shift_id}",
         )
         builder.button(text="Отмена", callback_data="admin_shift_refresh")
+        builder.adjust(1)
+        return builder.as_markup()
+
+    def build_shift_delete_keyboard(shifts: list[Shift]):
+        builder = InlineKeyboardBuilder()
+        for shift in shifts:
+            label = f"Удалить #{shift.id} {shift.doctor_name}"[:64]
+            builder.button(text=label, callback_data=f"admin_shift_delete:{shift.id}")
+        builder.button(text="Назад", callback_data="admin_shift_refresh")
         builder.adjust(1)
         return builder.as_markup()
 
@@ -227,11 +234,3 @@ def create_shift_admin_router(
         await callback.answer()
 
     return router
-    def build_shift_delete_keyboard(shifts: list[Shift]):
-        builder = InlineKeyboardBuilder()
-        for shift in shifts:
-            label = f"Удалить #{shift.id} {shift.doctor_name}"[:64]
-            builder.button(text=label, callback_data=f"admin_shift_delete:{shift.id}")
-        builder.button(text="Назад", callback_data="admin_shift_refresh")
-        builder.adjust(1)
-        return builder.as_markup()

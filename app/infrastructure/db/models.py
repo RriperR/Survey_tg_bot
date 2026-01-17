@@ -26,6 +26,13 @@ class Base(AsyncAttrs, DeclarativeBase):
     pass
 
 
+class AdminUser(Base):
+    __tablename__ = "admins"
+    id = Column(BigInteger, primary_key=True)
+    chat_id = Column(String(31), unique=True, nullable=False)
+    added_at = Column(String(63))
+
+
 class Worker(Base):
     __tablename__ = "workers"
     id = Column(BigInteger, primary_key=True)

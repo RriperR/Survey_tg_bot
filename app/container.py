@@ -1,5 +1,6 @@
 from app.config import load_settings
 from app.infrastructure.db.repositories import (
+    SqlAlchemyAdminRepository,
     SqlAlchemyWorkerRepository,
     SqlAlchemyPairRepository,
     SqlAlchemySurveyRepository,
@@ -10,6 +11,7 @@ from app.infrastructure.db.repositories import (
     SqlAlchemyInstrumentMoveRepository,
 )
 from app.infrastructure.sheets.gateway import SheetsGateway
+from app.application.use_cases.admin_access import AdminAccessService
 from app.application.use_cases.registration import RegistrationService
 from app.application.use_cases.survey_flow import SurveyFlowService
 from app.application.use_cases.shift_management import ShiftService
@@ -26,6 +28,7 @@ class Container:
         self.settings = load_settings()
 
         # Infrastructure
+        self.admin_repo = SqlAlchemyAdminRepository()
         self.worker_repo = SqlAlchemyWorkerRepository()
         self.pair_repo = SqlAlchemyPairRepository()
         self.survey_repo = SqlAlchemySurveyRepository()
@@ -56,6 +59,11 @@ class Container:
             self.cabinet_repo,
             self.instrument_repo,
             self.instrument_move_repo,
+        )
+        self.admin_access = AdminAccessService(
+            self.admin_repo,
+            self.worker_repo,
+            set(self.settings.bot.admin_chat_ids),
         )
         self.admin_sync = AdminSyncService(
             self.sheets_gateway,

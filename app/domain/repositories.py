@@ -1,6 +1,7 @@
 from typing import Protocol, Sequence
 
 from app.domain.entities import (
+    AdminUser,
     Worker,
     Pair,
     Survey,
@@ -10,6 +11,14 @@ from app.domain.entities import (
     Instrument,
     InstrumentMove,
 )
+
+
+class AdminRepository(Protocol):
+    async def list_all(self) -> Sequence[AdminUser]: ...
+    async def get_by_chat_id(self, chat_id: str) -> AdminUser | None: ...
+    async def exists(self, chat_id: str) -> bool: ...
+    async def add(self, admin: AdminUser) -> bool: ...
+    async def delete_by_chat_id(self, chat_id: str) -> bool: ...
 
 
 class WorkerRepository(Protocol):
