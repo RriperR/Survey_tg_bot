@@ -47,12 +47,12 @@ async def main():
     )
 
     scheduler = AsyncIOScheduler()
-    scheduler.add_job(container.admin_sync.sync_pairs, "cron", hour=19, minute=50)
+    # scheduler.add_job(container.admin_sync.sync_pairs, "cron", hour=19, minute=50)
     scheduler.add_job(container.admin_sync.sync_shifts, "cron", hour=6, minute=0)
-    scheduler.add_job(container.scheduler.send_surveys, "cron", hour=20, minute=0, args=[bot, dp])
-    scheduler.add_job(container.admin_sync.export_answers, "cron", day_of_week="sun", hour=23, minute=0)
+    # scheduler.add_job(container.scheduler.send_surveys, "cron", hour=20, minute=0, args=[bot, dp])
+    # scheduler.add_job(container.admin_sync.export_answers, "cron", day_of_week="sun", hour=23, minute=0)
     scheduler.add_job(container.admin_sync.export_shifts, "cron", hour=23, minute=5)
-    scheduler.add_job(container.reports.send_monthly_reports, "cron", day=1, hour=16, minute=38, args=[bot])
+    # scheduler.add_job(container.reports.send_monthly_reports, "cron", day=1, hour=16, minute=38, args=[bot])
     scheduler.start()
     logger.info("Scheduler started with jobs: %s", scheduler.get_jobs())
 
