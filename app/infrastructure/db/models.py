@@ -1,7 +1,7 @@
 import os
 
 from dotenv import load_dotenv
-from sqlalchemy import BigInteger, String, Text, Column, Boolean
+from sqlalchemy import BigInteger, String, Text, Column, Boolean, select
 from sqlalchemy.ext.asyncio import AsyncAttrs, async_sessionmaker, create_async_engine
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
 
@@ -124,3 +124,11 @@ class InstrumentMove(Base):
 async def async_main():
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
+
+    async with async_session() as session:
+        result = await session.execute(
+            select(Cabinet).where(Cabinet.name == "Стерилизационная")
+        )
+        if result.scalar_one_or_none() is None:
+            session.add(Cabinet(name="Стерилизационная", is_active=True))
+            await session.commit()
